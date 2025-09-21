@@ -1,4 +1,6 @@
 flask
-pyngrok
-cbpro
+gunicorn
 python-dotenv
+cbpro
+requests
+
