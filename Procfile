@@ -1,4 +1,5 @@
-gunicorn main:app --bind 0.0.0.0:$PORT --workers 3
+python -c "import os; print('ROOT LISTING:',os.listdir('.')); print('CWD:',os.getcwd())"
+
 
 
 
