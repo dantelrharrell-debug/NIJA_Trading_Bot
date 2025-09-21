@@ -1,56 +1,49 @@
-# main.py
-from flask import Flask, request, jsonify
+from cbpro import AuthenticatedClient
 import os
 
-# ===============================
-# CREATE THE FLASK APP FIRST
-# ===============================
-app = Flask(__name__)
+# --- Create Coinbase client using env variables ---
+client = AuthenticatedClient(
+    key=os.getenv("COINBASE_API_KEY"),
+    b64secret=os.getenv("COINBASE_API_SECRET"),
+    passphrase=os.getenv("COINBASE_API_PASSPHRASE")
+)
 
-# ===============================
-# HEALTH CHECK ROUTE
-# ===============================
-@app.route("/health", methods=["GET"])
-def health():
-    """
-    Simple health endpoint to check if the app is running.
-    """
-    return jsonify({
-        "status": "ok",
-        "live": os.getenv("NIJA_LIVE", "false")
-    }), 200
-
-# ===============================
-# WEBHOOK ROUTE
-# ===============================
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """
-    Receives TradingView or other webhook POST requests.
-    Validates the token and prints data to logs.
-    """
-    try:
-        data = request.get_json(force=True)
-    except Exception:
-        return jsonify({"error": "invalid json"}), 400
+    data = request.json
+    token = data.get("token","")
+    if token != os.getenv("NIJA_WEBHOOK_SECRET","supersecrettoken"):
+        return jsonify({"error":"Invalid token"}), 403
 
-    token = data.get("token") if isinstance(data, dict) else None
-    if not token:
-        token = request.headers.get("X-Webhook-Token")
+    action = data.get("action")
+    symbol = data.get("symbol")
+    size = data.get("size")
 
-    if token != os.getenv("NIJA_WEBHOOK_SECRET", "supersecrettoken"):
-        return jsonify({"error": "unauthorized"}), 401
-
-    # Log the received webhook to Render logs
     print("Webhook received:", data)
 
-    # Return the received payload for confirmation
-    return jsonify({"received": data, "message": "webhook accepted"}), 200
+    if os.getenv("NIJA_LIVE","false").lower() == "true":
+        try:
+            if action.lower() == "buy":
+                order = client.place_market_order(
+                    product_id=symbol,
+                    side="buy",
+                    size=str(size)
+                )
+            elif action.lower() == "sell":
+                order = client.place_market_order(
+                    product_id=symbol,
+                    side="sell",
+                    size=str(size)
+                )
+            else:
+                return jsonify({"error":"Unknown action"}), 400
 
-# ===============================
-# RUN THE APP
-# ===============================
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    # debug=True prints errors to the console if anything fails
-    app.run(host="0.0.0.0", port=port, debug=True)
+            print("Order executed:", order)
+            return jsonify({"status":"success","order":order})
+        except Exception as e:
+            print("Error placing order:", e)
+            return jsonify({"error":str(e)}), 500
+    else:
+        # Test mode: don't execute trade
+        print("NIJA_LIVE=false → no trade executed")
+        return jsonify({"status":"ok","message":"Test mode, trade not executed","data":data})
