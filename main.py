@@ -1,3 +1,5 @@
+import collections_fix  # must be first line so old libs find the names
+
 from flask import Flask, request, jsonify
 import os
 from cbpro import AuthenticatedClient
