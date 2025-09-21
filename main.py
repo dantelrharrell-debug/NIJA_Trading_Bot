@@ -1,19 +1,28 @@
-from cbpro import AuthenticatedClient
+from flask import Flask, request, jsonify
 import os
+from cbpro import AuthenticatedClient
 
-# --- Create Coinbase client using env variables ---
+# --- Flask app ---
+app = Flask(__name__)
+
+# --- Coinbase client ---
 client = AuthenticatedClient(
     key=os.getenv("COINBASE_API_KEY"),
     b64secret=os.getenv("COINBASE_API_SECRET"),
     passphrase=os.getenv("COINBASE_API_PASSPHRASE")
 )
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "live": os.getenv("NIJA_LIVE", "false")})
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    token = data.get("token","")
-    if token != os.getenv("NIJA_WEBHOOK_SECRET","supersecrettoken"):
-        return jsonify({"error":"Invalid token"}), 403
+    token = data.get("token", "")
+    
+    if token != os.getenv("NIJA_WEBHOOK_SECRET", "supersecrettoken"):
+        return jsonify({"error": "Invalid token"}), 403
 
     action = data.get("action")
     symbol = data.get("symbol")
@@ -21,7 +30,7 @@ def webhook():
 
     print("Webhook received:", data)
 
-    if os.getenv("NIJA_LIVE","false").lower() == "true":
+    if os.getenv("NIJA_LIVE", "false").lower() == "true":
         try:
             if action.lower() == "buy":
                 order = client.place_market_order(
@@ -36,14 +45,17 @@ def webhook():
                     size=str(size)
                 )
             else:
-                return jsonify({"error":"Unknown action"}), 400
+                return jsonify({"error": "Unknown action"}), 400
 
             print("Order executed:", order)
-            return jsonify({"status":"success","order":order})
+            return jsonify({"status": "success", "order": order})
         except Exception as e:
             print("Error placing order:", e)
-            return jsonify({"error":str(e)}), 500
+            return jsonify({"error": str(e)}), 500
     else:
-        # Test mode: don't execute trade
         print("NIJA_LIVE=false → no trade executed")
-        return jsonify({"status":"ok","message":"Test mode, trade not executed","data":data})
+        return jsonify({"status": "ok", "message": "Test mode, trade not executed", "data": data})
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
