@@ -3,4 +3,5 @@ gunicorn
 python-dotenv
 cbpro
 requests
+urllib3
 
