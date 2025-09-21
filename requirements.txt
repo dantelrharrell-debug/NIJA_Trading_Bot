@@ -1,0 +1,4 @@
+flask
+pyngrok
+cbpro
+python-dotenv
