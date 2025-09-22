@@ -1,67 +1,55 @@
-import shim_requests_packages_six   # must be the very first import
-import collections_fix              # keep this just after shim
-
 import os
-import logging
 from flask import Flask, request, jsonify
-from pyngrok import ngrok
 from cbpro2 import AuthenticatedClient
+from pyngrok import ngrok
 from dotenv import load_dotenv
 
-# --- Flask app ---
+# Load environment variables from .env
+load_dotenv()
+
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
+COINBASE_API_PASSPHRASE = os.getenv("COINBASE_API_PASSPHRASE")
+NIJA_WEBHOOK_SECRET = os.getenv("NIJA_WEBHOOK_SECRET", "supersecrettoken")
+LIVE = os.getenv("NIJA_LIVE", "false").lower() == "true"
+
 app = Flask(__name__)
 
-# --- Coinbase client ---
+# Initialize Coinbase Pro client
 client = AuthenticatedClient(
-    key=os.getenv("COINBASE_API_KEY"),
-    b64secret=os.getenv("COINBASE_API_SECRET"),
-    passphrase=os.getenv("COINBASE_API_PASSPHRASE")
+    key=COINBASE_API_KEY,
+    secret=COINBASE_API_SECRET,
+    passphrase=COINBASE_API_PASSPHRASE,
+    api_url="https://api.pro.coinbase.com"
 )
 
-@app.route("/health")
+# Optional: expose local server through ngrok for testing
+if not LIVE:
+    public_url = ngrok.connect(5000)
+    print(f" * ngrok tunnel running -> {public_url}")
+
+@app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "live": os.getenv("NIJA_LIVE", "false")})
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    # Verify secret
+    if request.headers.get("X-NIJA-WEBHOOK") != NIJA_WEBHOOK_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
     data = request.json
-    token = data.get("token", "")
-    
-    if token != os.getenv("NIJA_WEBHOOK_SECRET", "supersecrettoken"):
-        return jsonify({"error": "Invalid token"}), 403
+    print("Received webhook:", data)
 
-    action = data.get("action")
-    symbol = data.get("symbol")
-    size = data.get("size")
+    # Example: trading logic placeholder
+    if data.get("action") == "buy":
+        # client.place_order(...)  # Add your buy logic here
+        print("Buy signal received")
+    elif data.get("action") == "sell":
+        # client.place_order(...)  # Add your sell logic here
+        print("Sell signal received")
 
-    print("Webhook received:", data)
-
-    if os.getenv("NIJA_LIVE", "false").lower() == "true":
-        try:
-            if action.lower() == "buy":
-                order = client.place_market_order(
-                    product_id=symbol,
-                    side="buy",
-                    size=str(size)
-                )
-            elif action.lower() == "sell":
-                order = client.place_market_order(
-                    product_id=symbol,
-                    side="sell",
-                    size=str(size)
-                )
-            else:
-                return jsonify({"error": "Unknown action"}), 400
-
-            print("Order executed:", order)
-            return jsonify({"status": "success", "order": order})
-        except Exception as e:
-            print("Error placing order:", e)
-            return jsonify({"error": str(e)}), 500
-    else:
-        print("NIJA_LIVE=false → no trade executed")
-        return jsonify({"status": "ok", "message": "Test mode, trade not executed", "data": data})
+    return jsonify({"status": "success"}), 200
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
