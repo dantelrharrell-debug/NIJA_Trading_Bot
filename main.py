@@ -1,5 +1,9 @@
 import os
 from flask import Flask, request, jsonify
+# OLD:
+# from cbpro import AuthenticatedClient
+
+# NEW:
 from cbpro2 import AuthenticatedClient
 from pyngrok import ngrok
 from dotenv import load_dotenv
