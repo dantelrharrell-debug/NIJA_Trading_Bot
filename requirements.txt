@@ -3,3 +3,4 @@ gunicorn==25.0.0
 sortedcontainers==2.4.0
 cbpro==1.1.4
 six==1.10.0
+python-dotenv==1.0.1
