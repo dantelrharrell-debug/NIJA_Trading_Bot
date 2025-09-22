@@ -1,5 +1,5 @@
 #!/bin/bash
-# Activate the Render-created virtual environment
+# Activate the virtual environment
 source .venv/bin/activate
 
 # Start Gunicorn with your Flask app
