@@ -1,3 +1,4 @@
+import shim_requests_packages_six
 import collections_fix  # must be first line so old libs find the names
 
 from flask import Flask, request, jsonify
