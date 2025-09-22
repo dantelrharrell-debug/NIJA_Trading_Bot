@@ -19,3 +19,13 @@ try:
     import six as _six
 except Exception:
     _six = None
+#!/bin/bash
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Export port for Render
+export PORT=${PORT:-10000}
+
+# Start Flask app with Gunicorn
+exec gunicorn main:app --bind 0.0.0.0:$PORT --workers 3
