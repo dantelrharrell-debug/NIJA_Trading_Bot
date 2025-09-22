@@ -6,3 +6,5 @@ six==1.10.0
 python-dotenv==1.0.1
 requests==2.13.0
 pyngrok==7.3.0
+requests==2.31.0
+urllib3==2.0.6
