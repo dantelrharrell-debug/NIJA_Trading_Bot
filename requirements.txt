@@ -4,4 +4,7 @@ python-dotenv
 cbpro
 requests
 urllib3
-six
+six==1.17.0
+websocket-client==0.40.0
+pymongo==3.5.1
+sortedcontainers
