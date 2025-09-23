@@ -10,7 +10,14 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 
 def lazy_load_coinbase_client(verbose=True):
-    """
+   # Initialize client
+client = lazy_load_coinbase_client(verbose=True)
+
+# <-- DEBUG logs immediately after initialization
+if client is None:
+    print("[DEBUG] Coinbase client failed to initialize!", file=sys.stderr)
+else:
+    print("[DEBUG] Coinbase client initialized successfully!", file=sys.stderr) """
     Detect any installed Coinbase client, try all known constructors,
     and return the client instance (or None if nothing works).
     """
