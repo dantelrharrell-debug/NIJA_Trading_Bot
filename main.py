@@ -1,3 +1,5 @@
+import sys
+print("[startup] Starting main.py...", file=sys.stderr)
 import os
 import sys
 import pkgutil
