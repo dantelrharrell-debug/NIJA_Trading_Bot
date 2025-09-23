@@ -10,8 +10,12 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 
 def lazy_load_coinbase_client(verbose=True):
-   # Initialize client
-client = lazy_load_coinbase_client(verbose=True)
+    # all the code of the function must be indented
+    installed_modules = [m.name for m in pkgutil.iter_modules() if "coinbase" in m.name.lower()]
+    if verbose:
+        print(f"[startup] Installed coinbase-like modules: {installed_modules}", file=sys.stderr)
+
+    # ... rest of function ...
 
 # <-- DEBUG logs immediately after initialization
 if client is None:
