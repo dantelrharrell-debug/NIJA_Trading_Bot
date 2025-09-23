@@ -5,7 +5,13 @@ from flask import Flask, request, jsonify
 from cbpro import AuthenticatedClient
 
 # New library
+# Old cbpro code
+# from cbpro import AuthenticatedClient
+# client = AuthenticatedClient(api_key, api_secret, api_passphrase)
+
+# New coinbase library
 from coinbase_advanced_trade.client import Client
+client = Client(api_key=API_KEY, api_secret=API_SECRET)
 from pyngrok import ngrok
 from dotenv import load_dotenv
 
