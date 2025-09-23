@@ -1,10 +1,13 @@
 import os
 import logging
 from flask import Flask, request, jsonify
+# Old cbpro
 from cbpro import AuthenticatedClient
+
+# New library
+from coinbase_advanced_trade.client import Client
 from pyngrok import ngrok
 from dotenv import load_dotenv
-from coinbase_advanced_trade.client import Client
 
 # Load environment variables from .env
 load_dotenv()
