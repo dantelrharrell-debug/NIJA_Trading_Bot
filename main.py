@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from cbpro import AuthenticatedClient
 from pyngrok import ngrok
 from dotenv import load_dotenv
+from coinbase_advanced_trade.client import Client
 
 # Load environment variables from .env
 load_dotenv()
