@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from coinbase_advanced_trade.client import Client
 
+
 # Load environment variables from .env locally or Render
 load_dotenv()
 API_KEY = os.getenv("COINBASE_API_KEY")
