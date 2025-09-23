@@ -1,101 +1,61 @@
 import os
-import logging
 from flask import Flask, request, jsonify
-# Old cbpro
-from cbpro import AuthenticatedClient
-
-# New library
-# Old cbpro code
-# from cbpro import AuthenticatedClient
-# client = AuthenticatedClient(api_key, api_secret, api_passphrase)
-
-# New coinbase library
-from coinbaseadvanced.client import CoinbaseAdvancedTradeAPIClient
-from coinbaseadvanced.model import Side
-
-client = CoinbaseAdvancedTradeAPIClient.from_cloud_api_keys(API_KEY_NAME, PRIVATE_KEY)
-order = client.create_limit_order(
-    client_order_id="order123",
-    product_id="BTC-USD",
-    side=Side.BUY,
-    limit_price="20000.00",
-    base_size=0.1
-)
-client = Client(api_key=API_KEY, api_secret=API_SECRET)
-from pyngrok import ngrok
 from dotenv import load_dotenv
+from coinbase_advanced_trade.client import Client
 
-# Load environment variables from .env
+# Load environment variables from .env locally or Render
 load_dotenv()
-
 API_KEY = os.getenv("COINBASE_API_KEY")
 API_SECRET = os.getenv("COINBASE_API_SECRET")
-API_PASSPHRASE = os.getenv("COINBASE_API_PASSPHRASE")
 
-WEBHOOK_SECRET = os.getenv("NIJA_WEBHOOK_SECRET", "supersecrettoken")
-LIVE = os.getenv("NIJA_LIVE", "false").lower() == "true"
+# Initialize Coinbase client
+client = Client(api_key=API_KEY, api_secret=API_SECRET)
 
-# Initialize Flask app
+# Create Flask app
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
 
-# Initialize Coinbase Pro (cbpro2) authenticated client
-client = AuthenticatedClient(API_KEY, API_SECRET, API_PASSPHRASE)
-
-# Health check endpoint
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "live": LIVE})
+    return jsonify({"status": "ok"}), 200
 
-# Status endpoint: shows account balances if live
 @app.route("/status", methods=["GET"])
 def status():
-    if LIVE:
-        try:
-            accounts = client.get_accounts()
-            return jsonify({"status": "live", "accounts": accounts})
-        except Exception as e:
-            logging.error(f"Error fetching accounts: {e}")
-            return jsonify({"status": "error", "message": str(e)})
-    else:
-        return jsonify({"status": "offline"})
+    try:
+        accounts = client.get_accounts()
+        return jsonify({"status": "connected", "accounts": accounts})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-# Webhook endpoint for TradingView alerts
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.headers.get("X-WEBHOOK-TOKEN") != WEBHOOK_SECRET:
-        return jsonify({"status": "error", "message": "Unauthorized"}), 403
-
     data = request.json
-    logging.info(f"Received webhook: {data}")
+    try:
+        symbol = data.get("symbol")
+        action = data.get("action")
+        size = data.get("size")
 
-    if LIVE:
-        # Example: simple market order
-        if data.get("action") == "buy":
-            try:
-                order = client.place_market_order(
-                    product_id=data["symbol"],
-                    side="buy",
-                    funds=data.get("funds", "10")  # default $10
-                )
-                logging.info(f"Order executed: {order}")
-            except Exception as e:
-                logging.error(f"Order error: {e}")
-        elif data.get("action") == "sell":
-            try:
-                order = client.place_market_order(
-                    product_id=data["symbol"],
-                    side="sell",
-                    funds=data.get("funds", "10")
-                )
-                logging.info(f"Order executed: {order}")
-            except Exception as e:
-                logging.error(f"Order error: {e}")
+        if action == "buy":
+            order = client.place_order(
+                product_id=symbol,
+                side="buy",
+                size=size,
+                type="market"
+            )
+        elif action == "sell":
+            order = client.place_order(
+                product_id=symbol,
+                side="sell",
+                size=size,
+                type="market"
+            )
+        else:
+            return jsonify({"status": "ignored", "message": "Unknown action"}), 400
 
-    return jsonify({"status": "ok"})
-
+        return jsonify({"status": "success", "order": order})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
+    # Use Render port if available, otherwise default to 5000 locally
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
