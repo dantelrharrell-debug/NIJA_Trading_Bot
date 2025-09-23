@@ -1,5 +1,5 @@
 # Coinbase trading library (modern replacement for cbpro)
-coinbase-advancedtrade-python==1.2.0
+coinbaseadvanced==1.2.0
 
 # Flask for your web server
 Flask>=2.3.2
