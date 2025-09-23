@@ -3,7 +3,7 @@ import os
 import time
 import threading
 from flask import Flask, render_template_string, jsonify, request
-from coinbase_advanced_trade.client import Client
+from coinbase_advanced_py.client import Client
 
 # ==========================
 # Nija Live Crypto Trading Bot with TradingView signals
