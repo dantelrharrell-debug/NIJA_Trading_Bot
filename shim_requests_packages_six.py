@@ -1,31 +1,6 @@
-# shim_requests_packages_six.py
-# Compatibility shim: make requests.packages.urllib3.* point to real urllib3 module
-# and expose requests.packages.urllib3.packages.six.moves to six.moves
-#
-# This is a temporary workaround for old libs that import:
-#   requests.packages.urllib3.exceptions
-#   requests.packages.urllib3.packages.six.moves
-#
-import sys
-import types
-
-# try to import the modern modules
-try:
-    import urllib3 as _urllib3
-except Exception:
-    _urllib3 = None
-
-try:
-    import six as _six
-except Exception:
-    _six = None
 #!/bin/bash
 
-# Activate virtual environment
-source .venv/bin/activate
+# Use Render's $PORT if defined, otherwise default to 5000
+PORT_NUMBER=${PORT:-5000}
 
-# Export port for Render
-export PORT=${PORT:-10000}
-
-# Start Flask app with Gunicorn
-exec gunicorn main:app --bind 0.0.0.0:$PORT --workers 3
+exec gunicorn main:app --bind 0.0.0.0:$PORT_NUMBER --workers 3
