@@ -1,20 +1,23 @@
-# HTTP & requests
-requests>=2.32.3
-urllib3>=2.2.2,<3
+# Coinbase trading library (modern replacement for cbpro)
+coinbase-advancedtrade-python==1.2.0
 
-# Web framework
-flask==2.3.3
-
-# Coinbase API (modern, maintained wrapper)
-cbpro==1.1.4
-
-# Ngrok for exposing local endpoints
-pyngrok==7.3.0
+# Flask for your web server
+Flask>=2.3.2
 
 # Environment variables
-python-dotenv==1.1.1
+python-dotenv>=1.0.0
 
-# Utilities
-sortedcontainers==2.4.0
+# HTTP requests
+requests>=2.32.3
 
-gunicorn==23.0.0
+# WebSocket support if needed
+websocket-client>=1.6.2
+
+# Optional: async support for coinbase-advancedtrade-python
+aiohttp>=3.9.5
+
+# Blinker (used by Flask signals)
+blinker>=1.9.0
+
+# Gunicorn for production WSGI server
+gunicorn>=21.2.0
