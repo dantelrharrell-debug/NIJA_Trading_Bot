@@ -1,4 +1,5 @@
-cat > main.py <<'PYEOF'
+cat > # main.py
+print("Hello world")<<'PYEOF'
 # main.py — robust loader that won't crash if coinbase module name differs
 import os, sys, importlib, traceback, pkgutil
 from flask import Flask, jsonify, request
