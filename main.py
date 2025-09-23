@@ -10,7 +10,17 @@ from cbpro import AuthenticatedClient
 # client = AuthenticatedClient(api_key, api_secret, api_passphrase)
 
 # New coinbase library
-from coinbase_advanced_trade.client import Client
+from coinbaseadvanced.client import CoinbaseAdvancedTradeAPIClient
+from coinbaseadvanced.model import Side
+
+client = CoinbaseAdvancedTradeAPIClient.from_cloud_api_keys(API_KEY_NAME, PRIVATE_KEY)
+order = client.create_limit_order(
+    client_order_id="order123",
+    product_id="BTC-USD",
+    side=Side.BUY,
+    limit_price="20000.00",
+    base_size=0.1
+)
 client = Client(api_key=API_KEY, api_secret=API_SECRET)
 from pyngrok import ngrok
 from dotenv import load_dotenv
