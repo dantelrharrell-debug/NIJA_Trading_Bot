@@ -6,6 +6,21 @@ import os
 import pkgutil
 import importlib
 import traceback
+import os
+import sys
+import traceback
+from flask import Flask, jsonify, request
+
+# --- TURN OFF TEST MODE ---
+TEST_MODE = False
+print("[startup] Test mode is OFF. Nija will trade LIVE!", file=sys.stderr)
+# ---------------------------
+
+# Initialize Coinbase client here
+client = lazy_load_coinbase_client(verbose=True)
+
+# Initialize Flask app
+app = Flask(__name__)
 from flask import Flask, jsonify, request
 
 print("[startup] Starting main.py...", file=sys.stderr)
