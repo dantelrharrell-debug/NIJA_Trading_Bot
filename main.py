@@ -1,143 +1,135 @@
-#!/usr/bin/env python3
-import sys       # must be first for debug prints
 import os
-import traceback
-import pkgutil
-import importlib
-from flask import Flask, jsonify, request
+import time
+import logging
+from datetime import datetime
+from flask import Flask, request, jsonify
 
-# ------------------------------
-# TURN OFF TEST MODE — START LIVE TRADING
-TEST_MODE = False
-print("[startup] Test mode is OFF. Nija will trade LIVE!", file=sys.stderr)
-# ------------------------------
+# ----------------------
+# Logging
+# ----------------------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("nija_bot")
 
-def lazy_load_coinbase_client(verbose=True):
-    """
-    Detect any installed Coinbase client, try all known constructors,
-    and return the client instance (or None if nothing works).
-    """
-    installed_modules = [m.name for m in pkgutil.iter_modules() if "coinbase" in m.name.lower()]
-    if verbose:
-        print(f"[startup] Installed coinbase-like modules: {installed_modules}", file=sys.stderr)
-
-    candidates = [
-        "coinbase_advancedtrade.client",
-        "coinbase_advanced_trade.client",
-        "coinbase_advanced_py.client",
-        "coinbase_advanced.client",
-        "coinbase.client",
-    ]
-
-    for modname in candidates:
-        try:
-            mod = importlib.import_module(modname)
-            if verbose:
-                print(f"[startup] Imported module: {modname}", file=sys.stderr)
-
-            for attr in ("Client", "CoinbaseAdvancedTradeAPIClient", "RESTClient", "CoinbaseClient"):
-                if hasattr(mod, attr):
-                    C = getattr(mod, attr)
-                    if verbose:
-                        print(f"[startup] Found class: {modname}.{attr}", file=sys.stderr)
-
-                    constructors = [
-                        lambda C: C(
-                            api_key=os.getenv("COINBASE_API_KEY", ""),
-                            api_secret=os.getenv("COINBASE_API_SECRET", ""),
-                            passphrase=os.getenv("COINBASE_API_PASSPHRASE", "")
-                        ),
-                        lambda C: C(
-                            api_key=os.getenv("COINBASE_API_KEY", ""),
-                            api_secret=os.getenv("COINBASE_API_SECRET", "")
-                        ),
-                        lambda C: C.from_cloud_api_keys(
-                            os.getenv("COINBASE_API_KEY", ""),
-                            os.getenv("COINBASE_API_SECRET", "")
-                        ) if hasattr(C, "from_cloud_api_keys") else (_ for _ in ()).throw(Exception()),
-                        lambda C: C.from_keys(
-                            os.getenv("COINBASE_API_KEY", ""),
-                            os.getenv("COINBASE_API_SECRET", "")
-                        ) if hasattr(C, "from_keys") else (_ for _ in ()).throw(Exception())
-                    ]
-
-                    for i, ctor in enumerate(constructors):
-                        try:
-                            client_instance = ctor(C)
-                            if verbose:
-                                print(f"[startup] Successfully initialized client using constructor #{i+1}", file=sys.stderr)
-                            return client_instance
-                        except Exception as e:
-                            if verbose:
-                                print(f"[startup] Constructor #{i+1} failed for {modname}.{attr}:\n{traceback.format_exc()}", file=sys.stderr)
-
-            if callable(mod):
-                if verbose:
-                    print(f"[startup] Module itself is callable: {modname}", file=sys.stderr)
-                return mod()
-
-        except Exception as e:
-            if verbose:
-                print(f"[startup] Failed to import module {modname}:\n{traceback.format_exc()}", file=sys.stderr)
-
-    if verbose:
-        print("[startup] No Coinbase client could be initialized.", file=sys.stderr)
-    return None
-
-# Initialize Coinbase client
-client = lazy_load_coinbase_client(verbose=True)
-
-if client is None:
-    print("[DEBUG] Coinbase client failed to initialize!", file=sys.stderr)
-else:
-    print("[DEBUG] Coinbase client initialized successfully!", file=sys.stderr)
-
-# Initialize Flask
+# ----------------------
+# Flask App
+# ----------------------
 app = Flask(__name__)
 
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
+# ----------------------
+# Trading Control
+# ----------------------
+TRADING_ENABLED = os.getenv("TRADING_ENABLED", "false").lower() == "true"
+ENV = os.getenv("ENV", "production")  # optional
 
-@app.route("/status")
+trade_count = 0
+trade_history = []  # store trades
+
+def record_trade(trade_record: dict):
+    global trade_count, trade_history
+    trade_count += 1
+    trade_record["id"] = trade_count
+    trade_record["timestamp_iso"] = datetime.utcnow().isoformat() + "Z"
+    trade_history.append(trade_record)
+    log.info("Recorded trade: %s", trade_record)
+
+# ----------------------
+# Status endpoint
+# ----------------------
+@app.route("/status", methods=["GET"])
 def status():
-    if client is None:
-        return jsonify({"status":"error","message":"Coinbase client not initialized"}), 500
-    return jsonify({"status":"connected"})
+    return jsonify({
+        "ok": True,
+        "env": ENV,
+        "trading_enabled": TRADING_ENABLED,
+        "trade_count": trade_count,
+        "last_trade": trade_history[-1] if trade_history else None
+    }), 200
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    if client is None:
-        return jsonify({"status":"error","message":"Coinbase client not initialized"}), 500
+# ----------------------
+# Trades endpoint
+# ----------------------
+@app.route("/trades", methods=["GET"])
+def trades():
+    return jsonify({"total_trades": trade_count, "history": trade_history[-100:]}), 200
 
+# ----------------------
+# Order placement wrapper
+# ----------------------
+def place_order_wrapper(side: str, size: float, price: float = None, product_id: str = "BTC-USD", max_retries=3):
+    global TRADING_ENABLED
+    note = ""
+
+    if not TRADING_ENABLED:
+        note = "TRADING_DISABLED - simulated order recorded"
+        log.warning("Trading disabled. Simulating %s %s @ %s", side, size, price)
+        trade = {"side": side, "size": size, "price": price, "status": "simulated", "note": note}
+        record_trade(trade)
+        return trade
+
+    COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+    COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
+    COINBASE_API_PASSPHRASE = os.getenv("COINBASE_API_PASSPHRASE")
+
+    if not COINBASE_API_KEY or not COINBASE_API_SECRET:
+        note = "MISSING_API_KEYS"
+        log.error("Missing API keys. Aborting order.")
+        trade = {"side": side, "size": size, "price": price, "status": "failed", "note": note}
+        record_trade(trade)
+        return trade
+
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            log.info("Placing order attempt %d/%d: %s %s @ %s on %s", attempt, max_retries, side, size, price, product_id)
+
+            # ---- Simulated / placeholder order ----
+            # Replace this block with your actual API client call
+            result = {
+                "order_id": f"sim-{int(time.time())}",
+                "side": side,
+                "size": size,
+                "price": price,
+                "status": "filled",
+                "filled_qty": size,
+            }
+
+            trade = {
+                "order_id": result.get("order_id"),
+                "side": side,
+                "size": size,
+                "price": result.get("price", price),
+                "status": result.get("status", "unknown"),
+                "raw": result,
+                "note": f"placed via attempt {attempt}"
+            }
+            record_trade(trade)
+            return trade
+
+        except Exception as e:
+            last_err = str(e)
+            log.exception("Order attempt %d failed: %s", attempt, e)
+            time.sleep(1 * attempt)
+
+    trade = {"side": side, "size": size, "price": price, "status": "failed", "note": f"all attempts failed: {last_err}"}
+    record_trade(trade)
+    return trade
+
+# ----------------------
+# Test-order route
+# ----------------------
+@app.route("/test-order", methods=["POST"])
+def test_order():
     data = request.json or {}
-    symbol = data.get("symbol")
-    action = data.get("action")
-    size = data.get("size")
+    side = data.get("side", "buy")
+    size = float(data.get("size", 0.001))
+    price = data.get("price", None)
+    result = place_order_wrapper(side=side, size=size, price=price)
+    return jsonify(result), 200
 
-    if not symbol or not action:
-        return jsonify({"status":"ignored","message":"missing symbol or action"}), 400
-
-    if TEST_MODE:
-        print(f"[WEBHOOK] TEST MODE: Received {action} for {symbol} size {size}", file=sys.stderr)
-        return jsonify({"status":"ignored","message":"TEST MODE is ON"}), 200
-
-    try:
-        if hasattr(client, "place_order"):
-            order = client.place_order(product_id=symbol, side=action, size=size, type="market")
-            return jsonify({"status":"success","order":order})
-        if hasattr(client, "create_limit_order"):
-            order = client.create_limit_order(client_order_id="webhook",
-                                              product_id=symbol,
-                                              side=action,
-                                              limit_price="0",
-                                              base_size=size)
-            return jsonify({"status":"success","order":order})
-        return jsonify({"status":"error","message":"no known order method on client"}), 500
-    except Exception as e:
-        return jsonify({"status":"error","message":str(e)}), 500
-
-# Run Flask app if executed directly
+# ----------------------
+# Run app
+# ----------------------
 if __name__ == "__main__":
-    print("[startup] Starting Flask app...", file=sys.stderr)
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    port = int(os.getenv("PORT", 5000))
+    log.info("Starting Nija Trading Bot Flask app on port %s (TRADING_ENABLED=%s)", port, TRADING_ENABLED)
+    app.run(host="0.0.0.0", port=port)
