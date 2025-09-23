@@ -1,27 +1,16 @@
 import sys
-print("[startup] Starting main.py...", file=sys.stderr)
 import os
-import sys
 import pkgutil
 import importlib
 import traceback
 from flask import Flask, jsonify, request
 
+print("[startup] Starting main.py...", file=sys.stderr)
+
 app = Flask(__name__)
 
 def lazy_load_coinbase_client(verbose=True):
-    # all the code of the function must be indented
-    installed_modules = [m.name for m in pkgutil.iter_modules() if "coinbase" in m.name.lower()]
-    if verbose:
-        print(f"[startup] Installed coinbase-like modules: {installed_modules}", file=sys.stderr)
-
-    # ... rest of function ...
-
-# <-- DEBUG logs immediately after initialization
-if client is None:
-    print("[DEBUG] Coinbase client failed to initialize!", file=sys.stderr)
-else:
-    print("[DEBUG] Coinbase client initialized successfully!", file=sys.stderr) """
+    """
     Detect any installed Coinbase client, try all known constructors,
     and return the client instance (or None if nothing works).
     """
@@ -44,7 +33,6 @@ else:
             if verbose:
                 print(f"[startup] Imported module: {modname}", file=sys.stderr)
 
-            # Try known client class names
             for attr in ("Client", "CoinbaseAdvancedTradeAPIClient", "RESTClient", "CoinbaseClient"):
                 if hasattr(mod, attr):
                     C = getattr(mod, attr)
@@ -77,29 +65,31 @@ else:
                             if verbose:
                                 print(f"[startup] Successfully initialized client using constructor #{i+1}", file=sys.stderr)
                             return client_instance
-                        except Exception as e:
+                        except Exception:
                             if verbose:
                                 print(f"[startup] Constructor #{i+1} failed for {modname}.{attr}:\n{traceback.format_exc()}", file=sys.stderr)
-            
-            # If module itself is callable
+
             if callable(mod):
                 if verbose:
                     print(f"[startup] Module itself is callable: {modname}", file=sys.stderr)
                 return mod()
 
-        except Exception as e:
+        except Exception:
             if verbose:
                 print(f"[startup] Failed to import module {modname}:\n{traceback.format_exc()}", file=sys.stderr)
 
-    # Nothing worked
     if verbose:
         print("[startup] No Coinbase client could be initialized.", file=sys.stderr)
     return None
 
-# Initialize client
+# Initialize client (outside the function)
 client = lazy_load_coinbase_client(verbose=True)
 
-app = Flask(__name__)
+# Debug log
+if client is None:
+    print("[DEBUG] Coinbase client failed to initialize!", file=sys.stderr)
+else:
+    print("[DEBUG] Coinbase client initialized successfully!", file=sys.stderr)
 
 @app.route("/health")
 def health():
@@ -129,11 +119,13 @@ def webhook():
             order = client.place_order(product_id=symbol, side=action, size=size, type="market")
             return jsonify({"status":"success","order":order})
         if hasattr(client, "create_limit_order"):
-            order = client.create_limit_order(client_order_id="webhook",
-                                              product_id=symbol,
-                                              side=action,
-                                              limit_price="0",
-                                              base_size=size)
+            order = client.create_limit_order(
+                client_order_id="webhook",
+                product_id=symbol,
+                side=action,
+                limit_price="0",
+                base_size=size
+            )
             return jsonify({"status":"success","order":order})
         return jsonify({"status":"error","message":"no known order method on client"}), 500
     except Exception as e:
