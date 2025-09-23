@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-from coinbase_advancedtrade.client import Client
+from coinbase_advanced_trade.client import Client 
 
 
 # Load environment variables from .env locally or Render
