@@ -1,3 +1,6 @@
+# Turn off test mode
+TEST_MODE = False
+print("[startup] Test mode is OFF. Nija will trade LIVE!", file=sys.stderr)
 import sys
 import os
 import pkgutil
