@@ -1,23 +1,7 @@
-# Coinbase trading library (modern replacement for cbpro)
 coinbase-advancedtrade-python==0.5.0
-
-# Flask for your web server
 Flask>=2.3.2
-
-# Environment variables
 python-dotenv>=1.0.0
-
-# HTTP requests
 requests>=2.32.3
-
-# WebSocket support if needed
 websocket-client>=1.6.2
-
-# Optional: async support for coinbase-advancedtrade-python
-aiohttp>=3.9.5
-
-# Blinker (used by Flask signals)
 blinker>=1.9.0
-
-# Gunicorn for production WSGI server
 gunicorn>=21.2.0
