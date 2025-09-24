@@ -1,32 +1,35 @@
-# ===============================
-# MAIN.PY FOR NIJA TRADING BOT
-# ===============================
-
-import os
 import time
 import logging
-import requests
+import os
 import importlib
+import requests
 from flask import Flask
+from dotenv import load_dotenv
 
-# ---------------------------
-# LOGGING
-# ---------------------------
+load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("nija")
 
-# ---------------------------
-# PAPER MODE / ENV VARS
-# ---------------------------
 PAPER_MODE = os.getenv("PAPER_MODE", "0") == "1"
-COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
-COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
 TRADEVIEW_WEBHOOK_URL = os.getenv("TRADEVIEW_WEBHOOK_URL", "").strip()
-CRYPTO_TICKERS = ["BTC-USD", "ETH-USD"]  # add more as needed
+
+TRADING_PLAN = {
+    "LTC-USD": {"qty": 0.05, "profit_pct": 1.5, "stop_pct": 0.5},
+    "SOL-USD": {"qty": 0.1, "profit_pct": 2.0, "stop_pct": 1.0},
+    "XRP-USD": {"qty": 50, "profit_pct": 1.2, "stop_pct": 0.5},
+    "DOGE-USD": {"qty": 100, "profit_pct": 1.0, "stop_pct": 0.3},
+    "ETH-USD": {"qty": 0.01, "profit_pct": 1.5, "stop_pct": 0.7},
+    "BTC-USD": {"qty": 0.001, "profit_pct": 1.0, "stop_pct": 0.5},
+}
+
+CRYPTO_TICKERS = list(TRADING_PLAN.keys())
 
 # ---------------------------
-# ROBUST COINBASE CLIENT IMPORT
+# Coinbase Client Init
 # ---------------------------
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
+
 client = None
 ClientClass = None
 _import_candidates = [
@@ -58,47 +61,34 @@ if not PAPER_MODE:
 
             if ClientClass:
                 if not COINBASE_API_KEY or not COINBASE_API_SECRET:
-                    log.error("Coinbase API key/secret missing in env vars; switching to PAPER_MODE.")
+                    log.error("Coinbase API key/secret missing; switching to PAPER_MODE.")
                     PAPER_MODE = True
                 else:
                     try:
                         client = ClientClass(api_key=COINBASE_API_KEY, api_secret=COINBASE_API_SECRET)
-                        log.info("Imported Coinbase client from '%s' and initialized.", modname)
+                        log.info("Coinbase client imported from '%s' and initialized.", modname)
                     except Exception as e:
-                        log.error("Imported %s but failed to initialize Client: %s", modname, e)
+                        log.error("Client init failed for %s: %s", modname, e)
                         client = None
                         PAPER_MODE = True
                 break
         except Exception as e:
             log.debug("Import candidate '%s' failed: %s", modname, e)
     else:
-        log.error("No Coinbase client module found among candidates. Switching to PAPER_MODE.")
+        log.error("No Coinbase client found. Switching to PAPER_MODE.")
         PAPER_MODE = True
 else:
     log.info("PAPER_MODE enabled via environment variable.")
 
 # ---------------------------
-# FLASK APP
-# ---------------------------
-app = Flask(__name__)
-
-@app.route("/")
-def health():
-    return "Nija Trading Bot Live ✅", 200
-
-# ---------------------------
-# PLACE ORDER SAFELY
+# PLACE ORDER
 # ---------------------------
 def place_order_safe(symbol: str, side: str, qty: float):
-    """
-    Safely place an order:
-    - PAPER_MODE: returns simulated order
-    - LIVE_MODE: uses Coinbase client
-    """
     if PAPER_MODE:
+        fake_price = round(1000 * (1 + (hash(symbol) % 100)/10000.0), 2)
         fake_id = f"paper-{int(time.time())}"
-        log.info(f"[PAPER] Simulated {side.upper()} {symbol} x{qty} (id={fake_id})")
-        return {"success": True, "result": {"id": fake_id, "size": qty}}
+        log.info(f"[PAPER] {side.upper()} {symbol} x{qty} @ {fake_price} (id={fake_id})")
+        return {"success": True, "result": {"id": fake_id, "price": fake_price, "size": qty}}
 
     if client is None:
         err = "Coinbase client not initialized"
@@ -108,7 +98,7 @@ def place_order_safe(symbol: str, side: str, qty: float):
     try:
         res = client.place_order(
             product_id=symbol,
-            side=side.lower(),   # must be "buy" or "sell"
+            side=side.lower(),
             type="market",
             size=str(qty)
         )
@@ -119,60 +109,86 @@ def place_order_safe(symbol: str, side: str, qty: float):
         return {"success": False, "error": str(e)}
 
 # ---------------------------
-# GET LIVE BALANCES
+# POSITIONS
 # ---------------------------
-def get_balance_safe():
-    """
-    Fetch live balances from Coinbase client.
-    """
+positions = {}
+
+# ---------------------------
+# TECHNICAL STRATEGY (MA + RSI)
+# ---------------------------
+import pandas as pd
+
+def calculate_ma_rsi(prices, ma_period=10, rsi_period=14):
+    df = pd.DataFrame({"close": prices})
+    df["ma"] = df["close"].rolling(ma_period).mean()
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(rsi_period).mean()
+    avg_loss = loss.rolling(rsi_period).mean()
+    rs = avg_gain / (avg_loss + 1e-9)
+    df["rsi"] = 100 - (100 / (1 + rs))
+    return df["ma"].iloc[-1], df["rsi"].iloc[-1]
+
+# ---------------------------
+# FETCH PRICE HISTORY
+# ---------------------------
+def get_price_history(symbol, limit=50):
     if PAPER_MODE:
-        log.warning("get_balance_safe called in PAPER_MODE — returning simulated balances.")
-        return {"success": True, "balances": {"USD": 100.0}}
-
-    if client is None:
-        err = "Coinbase client not initialized"
-        log.error(err)
-        return {"success": False, "error": err}
-
-    try:
-        accounts = client.get_accounts()
-        balances = {}
-        rows = getattr(accounts, "data", accounts)  # supports dict or object
-        for a in rows:
-            currency = a.get("currency") or getattr(a, "currency", None)
-            available = None
-            if isinstance(a.get("available"), dict):
-                available = float(a["available"].get("value", 0.0))
-            elif a.get("available") is not None:
-                available = float(a["available"])
-            if currency and available is not None:
-                balances[currency] = available
-        log.info("Fetched balances: %s", balances)
-        return {"success": True, "balances": balances}
-    except Exception as e:
-        log.error("Failed to fetch balances: %s", e)
-        return {"success": False, "error": str(e)}
+        return [1000 + i for i in range(limit)]
+    else:
+        try:
+            data = client.get_product_historic_rates(symbol, granularity=60)
+            prices = [float(x[4]) for x in data]  # closing prices
+            return prices[-limit:]
+        except Exception as e:
+            log.error("Failed to fetch price history for %s: %s", symbol, e)
+            return [1000 + i for i in range(limit)]
 
 # ---------------------------
-# SEND BALANCES TO TRADINGVIEW
+# DETERMINE TRADE SIGNAL
 # ---------------------------
-def send_tradeview_balance(balances: dict):
-    if not TRADEVIEW_WEBHOOK_URL:
-        log.debug("TRADEVIEW_WEBHOOK_URL not set — skipping balance sync.")
-        return {"success": False, "error": "no-webhook-url"}
+def get_trade_signal(symbol):
+    prices = get_price_history(symbol)
+    ma, rsi = calculate_ma_rsi(prices)
+    current_price = prices[-1]
+    log.info("Symbol %s: current=%.2f, MA=%.2f, RSI=%.2f", symbol, current_price, ma, rsi)
 
-    try:
-        payload = {"balances": balances, "ts": int(time.time())}
-        resp = requests.post(TRADEVIEW_WEBHOOK_URL, json=payload, timeout=6)
-        if 200 <= resp.status_code < 300:
-            log.info("Sent balances to TradingView webhook: %s", payload)
-            return {"success": True, "status_code": resp.status_code}
-        else:
-            log.warning("TradingView webhook returned %s: %s", resp.status_code, resp.text)
-            return {"success": False, "status_code": resp.status_code, "body": resp.text}
-    except Exception as e:
-        log.error("Failed to send balance to TradingView: %s", e)
-        return {"success": False, "error": str(e)}
+    # Simple rule:
+    # Long: price above MA and RSI < 70
+    # Short: price below MA and RSI > 30
+    if current_price > ma and rsi < 70:
+        return "buy"
+    elif current_price < ma and rsi > 30:
+        return "sell"
+    else:
+        return None
+
+# ---------------------------
+# CHECK AND CLOSE POSITIONS
+# ---------------------------
+def check_position(symbol: str, current_price: float):
+    pos = positions.get(symbol)
+    if not pos:
+        return
+    plan = TRADING_PLAN[symbol]
+    entry_price = pos["entry_price"]
+    qty = pos["qty"]
+
+    if pos["type"] == "long":
+        profit_target = entry_price * (1 + plan["profit_pct"]/100)
+        stop_loss = entry_price * (1 - plan["stop_pct"]/100)
+        if current_price >= profit_target or current_price <= stop_loss:
+            log.info("Closing long %s: entry %.2f, current %.2f", symbol, entry_price, current_price)
+            place_order_safe(symbol, "sell", qty)
+            positions.pop(symbol)
+    elif pos["type"] == "short":
+        profit_target = entry_price * (1 - plan["profit_pct"]/100)
+        stop_loss = entry_price * (1 + plan["stop_pct"]/100)
+        if current_price <= profit_target or current_price >= stop_loss:
+            log.info("Closing short %s: entry %.2f, current %.2f", symbol, entry_price, current_price)
+            place_order_safe(symbol, "buy", qty)
+            positions.pop(symbol)
 
 # ---------------------------
 # MAIN BOT LOOP
@@ -180,15 +196,33 @@ def send_tradeview_balance(balances: dict):
 def run_bot():
     while True:
         for symbol in CRYPTO_TICKERS:
-            # Example: buy tiny amount
-            place_order_safe(symbol, side="buy", qty=0.001)
-            time.sleep(10)  # adjust timing
+            plan = TRADING_PLAN[symbol]
+            qty = plan["qty"]
+
+            # get current price
+            if PAPER_MODE:
+                current_price = round(1000 * (1 + (hash(symbol) % 100)/10000.0), 2)
+            else:
+                ticker = client.get_product_ticker(symbol)
+                current_price = float(ticker.get("price", 1000))
+
+            # Check and close TP/SL positions
+            check_position(symbol, current_price)
+
+            # Open new position if none
+            if symbol not in positions:
+                signal = get_trade_signal(symbol)
+                if signal:
+                    res = place_order_safe(symbol, signal, qty)
+                    if res["success"]:
+                        positions[symbol] = {"type": "long" if signal=="buy" else "short",
+                                             "entry_price": current_price,
+                                             "qty": qty}
+                        log.info("Opened %s %s x%s @ %.2f", positions[symbol]["type"], symbol, qty, current_price)
+
+            time.sleep(2)
 
 # ---------------------------
-# ENTRY POINT
+# FLASK APP
 # ---------------------------
-if __name__ == "__main__":
-    from threading import Thread
-    Thread(target=run_bot, daemon=True).start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+app = Flask(__name
