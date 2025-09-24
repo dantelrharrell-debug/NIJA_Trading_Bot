@@ -1,4 +1,28 @@
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("nija")
+
+PAPER_MODE = os.getenv("PAPER_MODE", "0") == "1"
+client = None
+
+if not PAPER_MODE:
+    try:
+        from coinbase_advanced_py.client import Client
+        COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+        COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
+        client = Client(api_key=COINBASE_API_KEY, api_secret=COINBASE_API_SECRET)
+        log.info("coinbase-advanced-py imported and client initialized.")
+    except ModuleNotFoundError as mnfe:
+        log.error("coinbase-advanced-py not installed. Switching to PAPER_MODE. Error: %s", mnfe)
+        PAPER_MODE = True
+    except Exception as e:
+        log.error("Failed to initialize Coinbase client, switching to PAPER_MODE. Error: %s", e)
+        PAPER_MODE = True
+else:
+    log.info("PAPER_MODE enabled via environment variable.")
+import os
 import time
 import requests
 from coinbase_advanced_py.client import Client
