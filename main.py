@@ -21,7 +21,7 @@ API_SECRET = os.environ.get \nMHcCAQEEIJqsooA4D2qcZ0i18AHDlDWmLc4x/iRsvTCXeyQYa7
 API_PASSPHRASE = os.environ.get("COINBASE_API_PASSPHRASE")  # optional
 
 # Connect to Coinbase Advanced Trade
-client = Client(API_KEY, API_SECRET, api_version="2023-08-01")
+client = Client(organizations/ce77e4ea-ecca-42ec-912a-b6b4455ab9d0/apiKeys/e83d5e8c-4f3b-4ba0-b186-2abeeae0d670Y, nMHcCAQEEIJqsooA4D2qcZ0i18AHDlDWmLc4x/iRsvTCXeyQYa7EIoAoGCCqGSM49\nAwEHoUQDQgAEoSbeGCjlKyKo8ozt7KK1Swan8bT9UB4K0P52vsaOmSImiYh1Tkp5\nE84GOz4FhJVOJzcEbuNCLfLpUvYnfHDzFA, api_version="2023-08-01")
 
 # Risk settings
 MAX_RISK_PER_TRADE = 10
