@@ -10,8 +10,8 @@ from coinbase_advanced_py.client import Client
 # ==========================
 
 # Load API keys from environment variables
-API_KEY = os.environ.get("COINBASE_API_KEY")
-API_SECRET = os.environ.get("COINBASE_API_SECRET")
+API_KEY = os.environ.get organizations/ce77e4ea-ecca-42ec-912a-b6b4455ab9d0/apiKeys/e83d5e8c-4f3b-4ba0-b186-2abeeae0d670
+API_SECRET = os.environ.get \nMHcCAQEEIJqsooA4D2qcZ0i18AHDlDWmLc4x/iRsvTCXeyQYa7EIoAoGCCqGSM49\nAwEHoUQDQgAEoSbeGCjlKyKo8ozt7KK1Swan8bT9UB4K0P52vsaOmSImiYh1Tkp5\nE84GOz4FhJVOJzcEbuNCLfLpUvYnfHDzFA==\n-----END EC PRIVATE KEY-----\n
 API_PASSPHRASE = os.environ.get("COINBASE_API_PASSPHRASE")  # optional
 
 # Connect to Coinbase Advanced Trade
