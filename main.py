@@ -3,7 +3,13 @@ import os
 import time
 import threading
 from flask import Flask, render_template_string, jsonify, request
+import os
 from coinbase_advanced_py.client import Client
+
+api_key = os.getenv organizations/ce77e4ea-ecca-42ec-912a-b6b4455ab9d0/apiKeys/e83d5e8c-4f3b-4ba0-b186-2abeeae0d670
+api_secret = os.getenv nMHcCAQEEIJqsooA4D2qcZ0i18AHDlDWmLc4x/iRsvTCXeyQYa7EIoAoGCCqGSM49\nAwEHoUQDQgAEoSbeGCjlKyKo8ozt7KK1Swan8bT9UB4K0P52vsaOmSImiYh1Tkp5\nE84GOz4FhJVOJzcEbuNCLfLpUvYnfHDzFA
+
+client = Client(api_key=api_key, api_secret=api_secret)
 
 # ==========================
 # Nija Live Crypto Trading Bot with TradingView signals
