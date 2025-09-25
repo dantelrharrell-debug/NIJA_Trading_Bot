@@ -18,16 +18,15 @@ def _count_in_window(seconds):
         return sum(1 for t in _trades if now - t["timestamp"] <= seconds)
 
 
-# --- Example bot (simulated) ---
+# --- Bot (simulated) ---
 class Bot:
     def run_bot(self):
         while True:
-            # Simulate trading every 10 seconds (for testing)
-            time.sleep(10)
+            time.sleep(10)  # simulate a trade every 10 seconds
             with _lock:
                 global trade_count
                 trade_count += 1
-                _trades.append({
+                trade = {
                     "id": trade_count,
                     "timestamp": time.time(),
                     "iso": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
@@ -35,7 +34,9 @@ class Bot:
                     "side": "BUY",
                     "amount": 0.01,
                     "price": 43000
-                })
+                }
+                _trades.append(trade)
+                print(f"[BOT] New trade added: {trade}")
 
 
 bot = Bot()
@@ -64,14 +65,6 @@ def trades_summary():
     return jsonify(resp), 200
 
 
-@app.route("/trades/recent", methods=["GET"])
-def trades_recent():
-    limit = int(request.args.get("limit", 5))
-    with _lock:
-        recent_trades = _trades[-limit:]
-    return jsonify(recent_trades), 200
-
-
 @app.route("/trades/test_add", methods=["POST"])
 def trades_test_add():
     data = request.get_json()
@@ -91,20 +84,24 @@ def trades_test_add():
             "price": data.get("price", 100)
         }
         _trades.append(trade)
+        print(f"[TEST ADD] Trade added: {trade}")
 
     return jsonify({"ok": True}), 200
 
 
-# --- Main startup block ---
+# --- Main startup ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     print(f"[startup] Using PORT={port}")
 
+    # start bot in background thread
     try:
         threading.Thread(target=bot.run_bot, daemon=True).start()
         print("[startup] Bot thread started")
     except Exception as e:
         print("[startup] Bot thread failed:", e)
 
-    time.sleep(1)
+    print("[startup] Flask server starting...")
+
+    # run Flask in same tab, logs will show in Shell
     app.run(host="0.0.0.0", port=port)
