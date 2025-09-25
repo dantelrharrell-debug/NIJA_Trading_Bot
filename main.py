@@ -26,8 +26,13 @@ def health():
     return jsonify({"status": "live" if status else "offline"})
 
 if __name__ == "__main__":
-    import threading
-    # Run bot in background thread
-    threading.Thread(target=bot.run_bot, daemon=True).start()
-    # Run Flask
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    import os, threading, time
+    port = int(os.environ.get("PORT", 8080))
+    print(f"[startup] Using PORT={port}")
+    try:
+        threading.Thread(target=bot.run_bot, daemon=True).start()
+        print("[startup] Bot thread started")
+    except Exception as e:
+        print("[startup] bot thread failed:", e)
+    time.sleep(1)
+    app.run(host="0.0.0.0", port=port)
