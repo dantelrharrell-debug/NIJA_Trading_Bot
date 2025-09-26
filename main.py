@@ -1,10 +1,7 @@
 import os
+import threading
 from flask import Flask, jsonify
 from nija import NijaBot
-from threading import Lock
-
-# Thread lock to safely read/write shared data
-_lock = Lock()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -21,30 +18,27 @@ nija = NijaBot(
     smart_logic=os.getenv("SMART_LOGIC", "True").lower() == "true"
 )
 
+# Function to start trading in a background thread
+def start_trading():
+    nija.run_live()  # Actual method to start trading continuously
+
+trading_thread = threading.Thread(target=start_trading, daemon=True)
+trading_thread.start()
+
 # Basic root route to confirm the bot is live
 @app.route("/", methods=["GET"])
 def root():
-    return "Nija Trading Bot is live ✅", 200
+    return "Nija Trading Bot is live and trading ✅", 200
 
 # Endpoint to get a summary of trades
 @app.route("/trades", methods=["GET"])
 def trades_summary():
-    """
-    Returns:
-      {
-        "total_trades": N,
-        "recent": {
-          "last_1_hour": X,
-          "last_24_hours": Y
-        },
-        "last_trade": {...}  # or null
-      }
-    """
-    with _lock:
-        total = nija.get_total_trades()  # Replace with your bot's method
-        last_trade = nija.get_last_trade()  # Replace with your bot's method
-        recent_1h = nija.get_trades_last_hour()  # Replace with your bot's method
-        recent_24h = nija.get_trades_last_24h()  # Replace with your bot's method
+    # Replace with your bot's actual methods for trade data
+    with nija.lock:  # Only if your bot uses a lock for thread safety
+        total = nija.get_total_trades()
+        last_trade = nija.get_last_trade()
+        recent_1h = nija.get_trades_last_hour()
+        recent_24h = nija.get_trades_last_24h()
 
     return jsonify({
         "total_trades": total,
@@ -55,6 +49,6 @@ def trades_summary():
         "last_trade": last_trade
     })
 
-# Run the app in debug mode (optional for Render)
+# Run the app
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
