@@ -1,10 +1,20 @@
 import os
+import json
 import threading
 from flask import Flask, jsonify
 from nija import NijaBot
+from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Path for trade logs
+TRADE_LOG_FILE = "trade_log.json"
+
+# Ensure trade log file exists
+if not os.path.exists(TRADE_LOG_FILE):
+    with open(TRADE_LOG_FILE, "w") as f:
+        json.dump([], f)
 
 # Initialize NijaBot using environment variables
 nija = NijaBot(
@@ -18,14 +28,31 @@ nija = NijaBot(
     smart_logic=os.getenv("SMART_LOGIC", "True").lower() == "true"
 )
 
-# Function to start trading in a background thread
-def start_trading():
-    nija.run_live()  # Actual method to start trading continuously
+# Function to log a trade to JSON
+def log_trade(trade):
+    trade_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        **trade
+    }
+    # Read existing logs
+    with threading.Lock():
+        with open(TRADE_LOG_FILE, "r+") as f:
+            data = json.load(f)
+            data.append(trade_entry)
+            f.seek(0)
+            json.dump(data, f, indent=2)
+            f.truncate()
 
+# Wrapper to capture trades and log them
+def start_trading():
+    for trade in nija.run_live():  # Assuming run_live() yields each trade
+        log_trade(trade)
+
+# Start trading in a background thread
 trading_thread = threading.Thread(target=start_trading, daemon=True)
 trading_thread.start()
 
-# Basic root route to confirm the bot is live
+# Basic root route
 @app.route("/", methods=["GET"])
 def root():
     return "Nija Trading Bot is live and trading ✅", 200
@@ -33,15 +60,16 @@ def root():
 # Endpoint to get a summary of trades
 @app.route("/trades", methods=["GET"])
 def trades_summary():
-    # Replace with your bot's actual methods for trade data
-    with nija.lock:  # Only if your bot uses a lock for thread safety
-        total = nija.get_total_trades()
-        last_trade = nija.get_last_trade()
-        recent_1h = nija.get_trades_last_hour()
-        recent_24h = nija.get_trades_last_24h()
+    with threading.Lock():
+        with open(TRADE_LOG_FILE, "r") as f:
+            data = json.load(f)
+
+    last_trade = data[-1] if data else None
+    recent_1h = sum(1 for t in data if (datetime.utcnow() - datetime.fromisoformat(t["timestamp"])).total_seconds() <= 3600)
+    recent_24h = sum(1 for t in data if (datetime.utcnow() - datetime.fromisoformat(t["timestamp"])).total_seconds() <= 86400)
 
     return jsonify({
-        "total_trades": total,
+        "total_trades": len(data),
         "recent": {
             "last_1_hour": recent_1h,
             "last_24_hours": recent_24h
