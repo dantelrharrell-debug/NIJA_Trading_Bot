@@ -1,95 +1,105 @@
-import time
+import os
 import logging
-import ccxt
 from flask import Flask, request, jsonify
+import threading
+import ccxt
 
-# -----------------------------
-# Logging Setup (console + file)
-# -----------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler("trades.log"),   # logs to file
-        logging.StreamHandler()              # logs to console
-    ]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+# -------------------------------
+# Flask App
+# -------------------------------
 app = Flask(__name__)
 
+# -------------------------------
+# NijaBot Class
+# -------------------------------
 class NijaBot:
-    def __init__(self, api_key, api_secret):
-        # Initialize CoinbasePro exchange via CCXT
-        self.exchange = ccxt.coinbasepro({
-            'apiKey': api_key,
-            'secret': api_secret,
-            'enableRateLimit': True,
-        })
-        logging.info("✅ NijaBot initialized with CoinbasePro")
+    def __init__(self):
+        # Load Coinbase API keys from environment
+        self.api_key = os.getenv("COINBASE_API_KEY")
+        self.secret = os.getenv("COINBASE_SECRET")
+        self.exchange = None
 
-    def run_live(self):
-        """Generator heartbeat to show the bot is running."""
-        while True:
-            logging.info("🔄 NijaBot heartbeat: waiting for webhook trades...")
-            time.sleep(5)
-            yield None
-
-    def _log_trade(self, trade):
-        """Logs trades and places them on Coinbase"""
-        if not trade or not isinstance(trade, dict):
-            logging.info(f"✅ Trade event: {trade}")
-            return
-
-        side = (trade.get("side") or trade.get("action") or trade.get("type") or "UNKNOWN").upper()
-        symbol = trade.get("symbol") or trade.get("market") or trade.get("pair") or "UNKNOWN"
-        price = trade.get("price") or trade.get("exec_price") or trade.get("filled_price") or "?"
-        amount = trade.get("amount") or trade.get("size") or trade.get("qty") or "?"
-
-        message = f"✅ Trade executed: {side} {amount} {symbol} @ {price}"
-        logging.info(message)
-
-        # Live execution on Coinbase
-        if self.exchange:
+        if self.api_key and self.secret:
             try:
-                # Coinbase expects lowercase side
+                self.exchange = ccxt.coinbasepro({
+                    'apiKey': self.api_key,
+                    'secret': self.secret,
+                    'enableRateLimit': True,
+                })
+                logging.info("✅ Coinbase exchange initialized.")
+            except Exception as e:
+                logging.error(f"❌ Failed to initialize Coinbase: {e}")
+        else:
+            logging.error("❌ Coinbase API keys not found. Set COINBASE_API_KEY and COINBASE_SECRET in .env")
+
+    # Place live trade
+    def place_trade(self, symbol, side, amount):
+        if self.exchange:
+            # Convert symbol to Coinbase format
+            symbol = symbol.replace("/", "-")
+            try:
                 order = self.exchange.create_market_order(symbol, side.lower(), float(amount))
                 logging.info(f"🚀 Order placed on Coinbase: {order}")
+                return order
             except Exception as e:
-                logging.error(f"❌ Failed to place order: {e}")
+                logging.error(f"❌ Failed to place order {side} {amount} {symbol}: {e}")
+        else:
+            logging.error("❌ Exchange not initialized. Cannot place order.")
 
+    # Handle incoming webhook trade
     def handle_webhook(self, data):
-        """Handles TradingView webhook JSON"""
-        try:
-            trade = data
-            self._log_trade(trade)
-            return {"status": "success"}
-        except Exception as e:
-            logging.exception(f"❌ Failed to handle webhook trade: {e}")
-            return {"status": "error", "message": str(e)}
+        logging.info(f"Webhook received: {data}")
 
-# Instantiate bot with your Coinbase credentials
-import os
-COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
-COINBASE_SECRET = os.getenv("COINBASE_SECRET")
-nija = NijaBot(COINBASE_API_KEY, COINBASE_SECRET)
+        # Check if single trade object or list of trades
+        trades = data if isinstance(data, list) else [data]
 
-# Flask route for TradingView webhook
+        for trade in trades:
+            symbol = trade.get("symbol")
+            side = trade.get("side")
+            amount = trade.get("amount")
+
+            if not all([symbol, side, amount]):
+                logging.error(f"❌ Invalid trade object: {trade}")
+                continue
+
+            logging.info(f"📈 Executing trade: {side.upper()} {amount} {symbol}")
+            self.place_trade(symbol, side, amount)
+
+
+# -------------------------------
+# Initialize Bot
+# -------------------------------
+nija = NijaBot()
+
+
+# -------------------------------
+# Webhook Route
+# -------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    if not data:
-        return jsonify({"status": "error", "message": "No JSON received"}), 400
-    result = nija.handle_webhook(data)
-    return jsonify(result)
+    try:
+        data = request.get_json(force=True)
+        nija.handle_webhook(data)
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logging.error(f"❌ Webhook processing failed: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
 
+
+# -------------------------------
+# Start Trading Loop (background)
+# -------------------------------
 def start_trading_loop():
-    """Run the heartbeat generator continuously"""
-    for _ in nija.run_live():
-        pass
+    logging.info("🚀 Nija Trading Bot live. Waiting for webhooks at /webhook")
+    # The bot now waits for webhooks, so this loop just keeps Flask alive
+    threading.Event().wait()
 
-# Auto-start loop if running this file directly
+
+# -------------------------------
+# Run Flask
+# -------------------------------
 if __name__ == "__main__":
-    import threading
     threading.Thread(target=start_trading_loop, daemon=True).start()
-    logging.info("🚀 NijaBot webhook server starting on port 10000")
     app.run(host="0.0.0.0", port=10000)
