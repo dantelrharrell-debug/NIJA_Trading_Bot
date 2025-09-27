@@ -1,82 +1,85 @@
-import os
-import json
-import threading
-from flask import Flask, jsonify
-from nija import NijaBot
-from datetime import datetime
+import time
 
-# Initialize Flask app
-app = Flask(__name__)
+class NijaBot:
+    def __init__(self, exchange=None):
+        """
+        exchange: an initialized ccxt exchange object (Coinbase, Binance, etc.)
+        """
+        self.exchange = exchange
+        print("✅ NijaBot initialized")
 
-# Path for trade logs
-TRADE_LOG_FILE = "trade_log.json"
+    def run_live(self):
+        """
+        Compatibility wrapper for older/newer method names so main.py can do:
+            for trade in nija.run_live():
+        """
+        candidate_names = (
+            "start_trading_loop", "start_trading", "start", "run", "run_loop",
+            "trade_loop", "execute_trades", "main_loop", "live_loop", "run_live"
+        )
 
-# Ensure trade log file exists
-if not os.path.exists(TRADE_LOG_FILE):
-    with open(TRADE_LOG_FILE, "w") as f:
-        json.dump([], f)
+        for name in candidate_names:
+            if name == "run_live":
+                continue
 
-# Initialize NijaBot using environment variables
-nija = NijaBot(
-    api_key=os.getenv("API_KEY"),
-    api_secret=os.getenv("API_SECRET"),
-    live=os.getenv("LIVE", "False").lower() == "true",
-    tp_percent=float(os.getenv("TP_PERCENT", 1.0)),
-    sl_percent=float(os.getenv("SL_PERCENT", 1.0)),
-    trailing_stop=float(os.getenv("TRAILING_STOP", 0.5)),
-    trailing_tp=float(os.getenv("TRAILING_TP", 0.5)),
-    smart_logic=os.getenv("SMART_LOGIC", "True").lower() == "true"
-)
+            func = getattr(self, name, None)
+            if not callable(func):
+                continue
 
-# Function to log a trade to JSON
-def log_trade(trade):
-    trade_entry = {
-        "timestamp": datetime.utcnow().isoformat(),
-        **trade
-    }
-    # Read existing logs
-    with threading.Lock():
-        with open(TRADE_LOG_FILE, "r+") as f:
-            data = json.load(f)
-            data.append(trade_entry)
-            f.seek(0)
-            json.dump(data, f, indent=2)
-            f.truncate()
+            try:
+                res = func()
+            except TypeError:
+                continue
+            except Exception as e:
+                print(f"❌ Error when calling {name}: {e}")
+                raise
 
-# Wrapper to capture trades and log them
-def start_trading():
-    for trade in nija.run_live():  # Assuming run_live() yields each trade
-        log_trade(trade)
+            # If it returned a generator
+            if hasattr(res, "__iter__") and not isinstance(res, (str, bytes, dict)):
+                for item in res:
+                    self._log_trade(item)
+                    yield item
+                return
 
-# Start trading in a background thread
-trading_thread = threading.Thread(target=start_trading, daemon=True)
-trading_thread.start()
+            # If it returned None (blocking loop)
+            if res is None:
+                while True:
+                    print("🔄 NijaBot heartbeat: still running, waiting for trades...")
+                    time.sleep(5)
+                    yield None
 
-# Basic root route
-@app.route("/", methods=["GET"])
-def root():
-    return "Nija Trading Bot is live and trading ✅", 200
+            # If it returned a single result
+            self._log_trade(res)
+            yield res
+            return
 
-# Endpoint to get a summary of trades
-@app.route("/trades", methods=["GET"])
-def trades_summary():
-    with threading.Lock():
-        with open(TRADE_LOG_FILE, "r") as f:
-            data = json.load(f)
+        raise AttributeError(
+            "NijaBot: no compatible live-run method found. Expected one of: "
+            "start_trading_loop, start_trading, start, run, run_loop, trade_loop, execute_trades, main_loop."
+        )
 
-    last_trade = data[-1] if data else None
-    recent_1h = sum(1 for t in data if (datetime.utcnow() - datetime.fromisoformat(t["timestamp"])).total_seconds() <= 3600)
-    recent_24h = sum(1 for t in data if (datetime.utcnow() - datetime.fromisoformat(t["timestamp"])).total_seconds() <= 86400)
+    def _log_trade(self, trade):
+        """
+        Helper to print clean trade logs.
+        Expects trade to be a dict with keys like 'side', 'symbol', 'price', 'amount'
+        """
+        if not trade:
+            return
 
-    return jsonify({
-        "total_trades": len(data),
-        "recent": {
-            "last_1_hour": recent_1h,
-            "last_24_hours": recent_24h
-        },
-        "last_trade": last_trade
-    })
+        if isinstance(trade, dict):
+            side = (trade.get("side") or trade.get("action") or trade.get("type") or "UNKNOWN").upper()
+            symbol = trade.get("symbol") or trade.get("market") or trade.get("pair") or "UNKNOWN"
+            price = trade.get("price") or trade.get("exec_price") or trade.get("filled_price") or "?"
+            amount = trade.get("amount") or trade.get("size") or trade.get("qty") or "?"
+            print(f"✅ Trade executed: {side} {amount} {symbol} @ {price}")
 
-# Run the app
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+            # Optional: CCXT order execution placeholder
+            # Uncomment and customize if you want to place actual orders
+            # try:
+            #     order = self.exchange.create_market_order(symbol, side.lower(), amount)
+            #     print(f"✅ Order placed on exchange: {order}")
+            # except Exception as e:
+            #     print(f"❌ Failed to place order on exchange: {e}")
+
+        else:
+            print(f"✅ Trade event: {trade}")
