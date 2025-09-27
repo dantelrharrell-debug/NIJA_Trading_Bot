@@ -1,79 +1,95 @@
-    # --- paste this inside class NijaBot in nija.py ---
+import time
+import logging
+import ccxt
+from flask import Flask, request, jsonify
+
+# -----------------------------
+# Logging Setup (console + file)
+# -----------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler("trades.log"),   # logs to file
+        logging.StreamHandler()              # logs to console
+    ]
+)
+
+app = Flask(__name__)
+
+class NijaBot:
+    def __init__(self, api_key, api_secret):
+        # Initialize CoinbasePro exchange via CCXT
+        self.exchange = ccxt.coinbasepro({
+            'apiKey': api_key,
+            'secret': api_secret,
+            'enableRateLimit': True,
+        })
+        logging.info("✅ NijaBot initialized with CoinbasePro")
+
     def run_live(self):
-        """
-        Compatibility wrapper for older/newer method names so main.py can do:
-            for trade in nija.run_live():
-        It will:
-          - try common candidate methods on this object (callable)
-          - if a candidate returns an iterable/generator, it yields each item
-          - if a candidate is blocking and returns None, it yields heartbeat None periodically
-          - if a candidate returns a single value, it yields it once
-        If nothing compatible is found, it raises AttributeError with a clear message.
-        """
-        import time
+        """Generator heartbeat to show the bot is running."""
+        while True:
+            logging.info("🔄 NijaBot heartbeat: waiting for webhook trades...")
+            time.sleep(5)
+            yield None
 
-        candidate_names = (
-            "start_trading_loop", "start_trading", "start", "run", "run_loop",
-            "trade_loop", "execute_trades", "main_loop", "live_loop", "run_live"
-        )
-
-        # Try candidates in order (skip calling this wrapper recursively)
-        for name in candidate_names:
-            if name == "run_live":
-                # avoid recursion: if the class already defines run_live, calling getattr() would return this method
-                # so check for another attribute with the same name defined on the class (i.e., skip self).
-                # If user actually has a different run_live method, it will have been defined before this one,
-                # but to be safe we skip to avoid infinite recursion.
-                continue
-
-            func = getattr(self, name, None)
-            if not callable(func):
-                continue
-
-            try:
-                res = func()
-            except TypeError:
-                # Method signature doesn't match (expects args) — skip and try next candidate
-                continue
-            except Exception:
-                # If method raised an exception when we tried to probe it, re-raise so logs show the real issue
-                raise
-
-            # If it returned a generator/iterable (and not a plain str/bytes/dict), yield items
-            if hasattr(res, "__iter__") and not isinstance(res, (str, bytes, dict)):
-                for item in res:
-                    yield item
-                return
-
-            # If it returned None, assume it is a blocking runner that handles trading itself.
-            # Keep the for-loop alive by yielding periodic heartbeats (None).
-            if res is None:
-                while True:
-                    # heartbeat to keep the for-loop alive without busy waiting
-                    time.sleep(0.5)
-                    yield None
-
-            # Otherwise it returned a single result — yield it once so old code that expects an iterable still works
-            yield res
+    def _log_trade(self, trade):
+        """Logs trades and places them on Coinbase"""
+        if not trade or not isinstance(trade, dict):
+            logging.info(f"✅ Trade event: {trade}")
             return
 
-        # If we get here, no compatible method found — raise helpful error
-        raise AttributeError(
-            "NijaBot: no compatible live-run method found. Expected one of: "
-            "start_trading_loop, start_trading, start, run, run_loop, trade_loop, execute_trades, main_loop."
-        )
-    # --- end paste ---
-class NijaBot:
-    def __init__(self, api_key, api_secret, live, tp_percent, sl_percent, trailing_stop, trailing_tp, smart_logic):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.live = live
-        # etc... store your other params
+        side = (trade.get("side") or trade.get("action") or trade.get("type") or "UNKNOWN").upper()
+        symbol = trade.get("symbol") or trade.get("market") or trade.get("pair") or "UNKNOWN"
+        price = trade.get("price") or trade.get("exec_price") or trade.get("filled_price") or "?"
+        amount = trade.get("amount") or trade.get("size") or trade.get("qty") or "?"
 
-    def run_bot(self):
-        # your trading logic here
+        message = f"✅ Trade executed: {side} {amount} {symbol} @ {price}"
+        logging.info(message)
+
+        # Live execution on Coinbase
+        if self.exchange:
+            try:
+                # Coinbase expects lowercase side
+                order = self.exchange.create_market_order(symbol, side.lower(), float(amount))
+                logging.info(f"🚀 Order placed on Coinbase: {order}")
+            except Exception as e:
+                logging.error(f"❌ Failed to place order: {e}")
+
+    def handle_webhook(self, data):
+        """Handles TradingView webhook JSON"""
+        try:
+            trade = data
+            self._log_trade(trade)
+            return {"status": "success"}
+        except Exception as e:
+            logging.exception(f"❌ Failed to handle webhook trade: {e}")
+            return {"status": "error", "message": str(e)}
+
+# Instantiate bot with your Coinbase credentials
+import os
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+COINBASE_SECRET = os.getenv("COINBASE_SECRET")
+nija = NijaBot(COINBASE_API_KEY, COINBASE_SECRET)
+
+# Flask route for TradingView webhook
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    if not data:
+        return jsonify({"status": "error", "message": "No JSON received"}), 400
+    result = nija.handle_webhook(data)
+    return jsonify(result)
+
+def start_trading_loop():
+    """Run the heartbeat generator continuously"""
+    for _ in nija.run_live():
         pass
 
-    def check_status(self):
-        # return True if bot is running, False otherwise
-        return True
+# Auto-start loop if running this file directly
+if __name__ == "__main__":
+    import threading
+    threading.Thread(target=start_trading_loop, daemon=True).start()
+    logging.info("🚀 NijaBot webhook server starting on port 10000")
+    app.run(host="0.0.0.0", port=10000)
