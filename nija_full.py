@@ -9,14 +9,14 @@ app = Flask(__name__)
 class NijaBot:
     def __init__(self, exchange=None):
         """
-        exchange: optional initialized ccxt exchange (Coinbase, Binance, etc.)
+        exchange: optional ccxt exchange object (Coinbase, Binance, etc.)
         """
         self.exchange = exchange
         logging.info("✅ NijaBot initialized")
 
     def run_live(self):
         """
-        Generator placeholder if you want to iterate over live events
+        Generator heartbeat to show the bot is running.
         """
         while True:
             logging.info("🔄 NijaBot heartbeat: waiting for webhook trades...")
@@ -25,7 +25,7 @@ class NijaBot:
 
     def _log_trade(self, trade):
         """
-        Logs trades in a clean format
+        Cleanly logs trades
         """
         if not trade:
             return
@@ -37,7 +37,7 @@ class NijaBot:
             amount = trade.get("amount") or trade.get("size") or trade.get("qty") or "?"
             logging.info(f"✅ Trade executed: {side} {amount} {symbol} @ {price}")
 
-            # Optional: execute on CCXT exchange
+            # Optional: live order execution via CCXT
             # if self.exchange:
             #     try:
             #         order = self.exchange.create_market_order(symbol, side.lower(), amount)
@@ -49,8 +49,7 @@ class NijaBot:
 
     def handle_webhook(self, data):
         """
-        Call this with JSON payload from TradingView webhook
-        Expected keys: 'side', 'symbol', 'price', 'amount'
+        Handles TradingView webhook JSON
         """
         try:
             trade = data
@@ -60,35 +59,28 @@ class NijaBot:
             logging.exception(f"❌ Failed to handle webhook trade: {e}")
             return {"status": "error", "message": str(e)}
 
-# Instantiate the bot
+# Instantiate bot
 nija = NijaBot()
 
-# Flask route to handle TradingView webhooks
+# Flask route for TradingView webhook
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.method == "POST":
-        data = request.json
-        if not data:
-            return jsonify({"status": "error", "message": "No JSON received"}), 400
-        result = nija.handle_webhook(data)
-        return jsonify(result)
-    return jsonify({"status": "error", "message": "Invalid method"}), 405
+    data = request.json
+    if not data:
+        return jsonify({"status": "error", "message": "No JSON received"}), 400
+    result = nija.handle_webhook(data)
+    return jsonify(result)
 
-def start_trading(nija_instance=None):
+def start_trading_loop():
     """
-    Optional generator-based loop to run alongside webhook server
+    Run the heartbeat generator continuously
     """
-    bot = nija_instance or nija
-    try:
-        for trade in bot.run_live():
-            if trade is None:
-                continue
-    except Exception as e:
-        logging.exception(f"Trading loop crashed: {e}")
+    for _ in nija.run_live():
+        pass
 
-# If running this file directly, start Flask + optional loop
+# Auto-start loop if running this file
 if __name__ == "__main__":
     import threading
-    threading.Thread(target=start_trading, args=(nija,), daemon=True).start()
-    logging.info("🚀 Starting NijaBot webhook server on port 10000")
+    threading.Thread(target=start_trading_loop, daemon=True).start()
+    logging.info("🚀 NijaBot webhook server starting on port 10000")
     app.run(host="0.0.0.0", port=10000)
