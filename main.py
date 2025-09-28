@@ -4,6 +4,9 @@ from decimal import Decimal, InvalidOperation
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import nija_ai
+import os
+
+TRADINGVIEW_SECRET = os.getenv("TRADINGVIEW_SECRET", "mysecret")
 
 load_dotenv()
 
