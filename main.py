@@ -1,38 +1,16 @@
-from flask import Flask, request, jsonify
+# main.py
+import os, re, traceback
 from decimal import Decimal, InvalidOperation
-import json
-import traceback
-import re
-import os
-from datetime import datetime
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+import nija_ai
 
-# ==========================
-# Config / Toggle
-# ==========================
-DRY_RUN = True  # Toggle to False for live trading
-AI_MEMORY_FILE = "ai_memory.json"
+load_dotenv()
 
-# ==========================
-# Flask App
-# ==========================
 app = Flask(__name__)
+DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
 
-# ==========================
-# Coinbase Spot Client Placeholder
-# Replace with your actual CCXT client init
-# ==========================
-spot = None
-# Example:
-# import ccxt
-# spot = ccxt.coinbasepro({
-#     'apiKey': os.getenv('COINBASE_SPOT_KEY'),
-#     'secret': os.getenv('COINBASE_SPOT_SECRET'),
-#     'password': os.getenv('COINBASE_SPOT_PASSPHRASE')
-# })
-
-# ==========================
-# Masking helpers
-# ==========================
+# Mask keys when printing
 KEY_RE = re.compile(r'^[A-Za-z0-9\-_]{20,}$')
 
 def mask_value(v):
@@ -45,59 +23,13 @@ def mask_value(v):
 
 def mask_payload(obj):
     if isinstance(obj, dict):
-        return {k: mask_payload(v) for k, v in obj.items()}
+        return {k: mask_payload(v) for k,v in obj.items()}
     if isinstance(obj, list):
         return [mask_payload(v) for v in obj]
     if isinstance(obj, str):
         return mask_value(obj)
     return obj
 
-# ==========================
-# AI Memory helpers
-# ==========================
-def load_ai_memory():
-    try:
-        with open(AI_MEMORY_FILE) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_ai_memory(mem):
-    with open(AI_MEMORY_FILE, "w") as f:
-        json.dump(mem, f, indent=2)
-
-def update_ai_score(symbol, profit):
-    mem = load_ai_memory()
-    entry = mem.get(symbol, {"score": 1.0, "trades": 0, "profit": 0.0})
-    factor = 1.05 if profit > 0 else 0.95
-    entry["score"] *= factor
-    entry["trades"] += 1
-    entry["profit"] += profit
-    mem[symbol] = entry
-    save_ai_memory(mem)
-
-# ==========================
-# Daily top ticker scanner
-# ==========================
-def get_trend_score(symbol):
-    # Simple placeholder: return 1.0 for now
-    # Replace with SMA/RSI/trend calculation
-    return 1.0
-
-def daily_ai_scan(symbols):
-    mem = load_ai_memory()
-    top_symbols = []
-    for s in symbols:
-        trend = get_trend_score(s)
-        hist_score = mem.get(s, {}).get("score", 1.0)
-        combined = trend * hist_score
-        top_symbols.append((s, combined))
-    top_symbols.sort(key=lambda x: x[1], reverse=True)
-    return top_symbols[:5]
-
-# ==========================
-# Webhook handler
-# ==========================
 @app.route("/webhook", methods=["POST"])
 def webhook_post():
     try:
@@ -108,91 +40,90 @@ def webhook_post():
         if not raw:
             return jsonify({"status":"error","message":"invalid json or empty body"}), 400
 
+        # Parse fields
         symbol = raw.get("symbol", "BTC-USD")
+        if isinstance(symbol, str):
+            symbol = symbol.replace("/", "-")
+            # If symbol like DOGEUSD -> DOGE-USD
+            if symbol.upper().endswith("USD") and "-" not in symbol:
+                symbol = symbol[:-3] + "-USD"
+
         side = raw.get("side", "buy")
-        amount_raw = raw.get("amount", None)
+        amount_raw = raw.get("amount", None)  # could be qty or USD notional
         market_type = raw.get("market_type", "spot")
+        ai_signal = raw.get("ai_signal", None)
+        position_percent = raw.get("position_percent", None)
 
         if amount_raw is None:
             return jsonify({"status":"error","message":"missing amount"}), 400
 
+        # Try parse amount as Decimal
         try:
-            if isinstance(amount_raw, (int, float, Decimal)):
-                amount = Decimal(str(amount_raw))
-            else:
-                amount = Decimal(str(amount_raw).strip())
-            if amount <= 0:
-                return jsonify({"status":"error","message":"amount must be > 0"}), 400
-        except (InvalidOperation, ValueError):
-            print("❌ Invalid amount value:", amount_raw)
-            return jsonify({"status":"error","message":"invalid amount, must be numeric"}), 400
+            amount_dec = Decimal(str(amount_raw).strip())
+        except Exception:
+            return jsonify({"status":"error","message":"invalid amount format"}), 400
 
-        if "/" in symbol:
-            symbol = symbol.replace("/", "-")
+        # Detect if amount is USD notional or coin qty:
+        # Heuristic: if amount > 10 and symbol endswith -USD -> treat as USD notional
+        treat_as_usd = False
+        if symbol.upper().endswith("-USD") and amount_dec > Decimal("10"):
+            treat_as_usd = True
 
-        print(f"Parsed order -> symbol={symbol} side={side} amount={amount} DRY_RUN={DRY_RUN}")
+        # Convert USD to qty if needed
+        if treat_as_usd:
+            qty = nija_ai.convert_usd_to_qty(symbol, float(amount_dec))
+            if qty is None:
+                return jsonify({"status":"error","message":"failed to convert USD to quantity"}), 500
+            amount_qty = Decimal(str(qty))
+        else:
+            amount_qty = amount_dec
 
+        # Apply position_percent if provided (e.g., position_percent = "10" means 10%)
+        if position_percent:
+            try:
+                scale = Decimal(str(position_percent)) / Decimal("100")
+                if scale > 0:
+                    amount_qty = amount_qty * scale
+            except Exception:
+                pass
+
+        # Apply AI scaling based on history
+        perf = nija_ai.last_trade_profit_percent(symbol)
+        ai_multiplier = 1.0
+        try:
+            ai_multiplier = float(ai_signal) if ai_signal is not None else 1.0
+        except Exception:
+            ai_multiplier = 1.0
+
+        if perf is not None:
+            if perf > 0.5:
+                ai_multiplier = min(ai_multiplier * 1.05, 2.0)
+            elif perf < -0.5:
+                ai_multiplier = max(ai_multiplier * 0.9, 0.1)
+
+        try:
+            final_amount = float(amount_qty * Decimal(str(ai_multiplier)))
+        except Exception:
+            final_amount = float(amount_qty)
+
+        print(f"Parsed order -> symbol={symbol} side={side} amount={final_amount} market_type={market_type} DRY_RUN={DRY_RUN} perf={perf} ai_mul={ai_multiplier}")
+
+        # If DRY_RUN, simulate and save entry
         if DRY_RUN:
-            simulated = {"symbol": symbol, "side": side, "amount": str(amount), "note": "dry-run (no real order placed)"}
-            print("🟡 DRY_RUN simulated order:", simulated)
-            return jsonify({"status":"dry-run","result": simulated}), 200
+            result = nija_ai.execute_trade(symbol, side, final_amount, market_type=market_type, dry_run=True)
+            return jsonify({"status":"dry-run","result": result}), 200
 
-        if not spot:
-            print("❌ Spot client not configured.")
-            return jsonify({"status":"error","message":"spot client not configured"}), 500
-
-        try:
-            full_order = spot.create_market_order(symbol, side, float(amount))
-            print("✅ Full order result:", full_order)
-            # calculate realized profit placeholder
-            realized_profit = float(full_order.get("filled_total", 0)) - float(full_order.get("cost", 0))
-            update_ai_score(symbol, realized_profit)
-            return jsonify({"status":"success","order": full_order}), 200
-        except Exception as order_exc:
-            print("❌ Exception placing order:", repr(order_exc))
-            traceback.print_exc()
-            return jsonify({"status":"error","message": str(order_exc)}), 500
+        # Live: execute trade
+        res = nija_ai.execute_trade(symbol, side, final_amount, market_type=market_type, dry_run=False)
+        if res.get("error"):
+            return jsonify({"status":"error","message": res["error"]}), 500
+        return jsonify({"status":"success","result": res}), 200
 
     except Exception as e:
         print("❌ Unexpected exception in webhook_post:", repr(e))
         traceback.print_exc()
         return jsonify({"status":"error","message":"internal server error"}), 500
 
-# ==========================
-# Health check endpoint
-# ==========================
-@app.route("/", methods=["GET"])
-def index():
-    return jsonify({"status":"NijaBot live", "time": str(datetime.utcnow())})
-
-# ==========================
-# Run App
-# ==========================
 if __name__ == "__main__":
-    print("✅ NijaBot initialized. Listening for webhooks...")
-    app.run(host="0.0.0.0", port=8080)
-
-# inside webhook_post()
-raw = request.get_json(force=True, silent=True)
-symbol = raw.get("symbol", "BTC-USD")
-side = raw.get("side", "buy")
-amount_raw = raw.get("amount", "0.0001")
-ai_signal = float(raw.get("ai_signal", 1.0))
-
-# Convert amount safely
-from decimal import Decimal
-amount = Decimal(str(amount_raw)) * Decimal(ai_signal)
-
-# Normalize symbol
-if "/" in symbol:
-    symbol = symbol.replace("/", "-")
-
-# Place trade automatically (spot or futures based on 'market_type')
-market_type = raw.get("market_type", "spot")
-client = spot if market_type=="spot" else futures_client
-
-try:
-    order = client.create_market_order(symbol, side, float(amount))
-    print("✅ Order executed:", order)
-except Exception as e:
-    print("❌ Order failed:", repr(e))
+    print("✅ NijaBot webhook listening on /webhook")
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
