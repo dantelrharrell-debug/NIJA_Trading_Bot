@@ -6,6 +6,14 @@ from dotenv import load_dotenv
 import nija_ai
 import os
 
+import os
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Read secret from environment
+TRADINGVIEW_SECRET = os.getenv("TRADINGVIEW_SECRET", "mysecret")
+
 TRADINGVIEW_SECRET = os.getenv("TRADINGVIEW_SECRET", "mysecret")
 
 load_dotenv()
