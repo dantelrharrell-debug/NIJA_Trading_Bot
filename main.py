@@ -108,3 +108,20 @@ def webhook_post():
         print("❌ Unexpected exception:", e)
         traceback.print_exc()
         return jsonify({"status":"error","message":"internal server error"}), 500
+
+import schedule
+import time
+from nija_ai_scan import scan_market
+
+def daily_scan():
+    print("📅 Running daily AI market scan...")
+    top_tickers = scan_market()
+    for t in top_tickers:
+        print(t)
+
+# Schedule once daily
+schedule.every().day.at("00:01").do(daily_scan)
+
+# Run scheduler in background
+import threading
+threading.Thread(target=lambda: [schedule.run_pending() or time.sleep(60) for _ in iter(int, 1)], daemon=True).start()
