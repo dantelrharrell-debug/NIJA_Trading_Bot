@@ -1,6 +1,4 @@
-#!/bin/bash
-echo "PWD: $(pwd)"
-echo "Listing files:"
-ls -la
-echo "Starting Flask app..."
-exec gunicorn main:app --bind 0.0.0.0:$PORT --workers 3
+#!/usr/bin/env bash
+# start.sh - start the Nija Flask app (no tests, no imports that use request)
+export FLASK_ENV=production
+python main.py
