@@ -9,7 +9,6 @@ ccxt==3.0.81
 flask
 ccxt
 python-dotenv
-flask
-ccxt
 gunicorn
 joblib
+numpy
