@@ -12,3 +12,5 @@ python-dotenv
 gunicorn
 joblib
 numpy
+ccxt==3.0.81
+requests==2.31.0
