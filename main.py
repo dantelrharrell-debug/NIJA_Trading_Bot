@@ -1,3 +1,10 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # reads .env file
+
+COINBASE_SPOT_KEY = os.getenv("COINBASE_SPOT_KEY")
+COINBASE_SPOT_SECRET = os.getenv("COINBASE_SPOT_SECRET")
 from nija_full import nija, app, start_trading_loop
 import threading
 import logging
