@@ -171,3 +171,28 @@ def index():
 if __name__ == "__main__":
     print("✅ NijaBot initialized. Listening for webhooks...")
     app.run(host="0.0.0.0", port=8080)
+
+# inside webhook_post()
+raw = request.get_json(force=True, silent=True)
+symbol = raw.get("symbol", "BTC-USD")
+side = raw.get("side", "buy")
+amount_raw = raw.get("amount", "0.0001")
+ai_signal = float(raw.get("ai_signal", 1.0))
+
+# Convert amount safely
+from decimal import Decimal
+amount = Decimal(str(amount_raw)) * Decimal(ai_signal)
+
+# Normalize symbol
+if "/" in symbol:
+    symbol = symbol.replace("/", "-")
+
+# Place trade automatically (spot or futures based on 'market_type')
+market_type = raw.get("market_type", "spot")
+client = spot if market_type=="spot" else futures_client
+
+try:
+    order = client.create_market_order(symbol, side, float(amount))
+    print("✅ Order executed:", order)
+except Exception as e:
+    print("❌ Order failed:", repr(e))
