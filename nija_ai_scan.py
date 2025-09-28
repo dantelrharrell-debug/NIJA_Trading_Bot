@@ -1,24 +1,25 @@
 import ccxt
-import datetime
 from decimal import Decimal
-import random  # placeholder for AI scoring logic
+import random
+import json
 
-# Configure your exchange
+# Configure your Coinbase exchange (spot)
 exchange = ccxt.coinbase({
     "apiKey": "YOUR_SPOT_KEY",
     "secret": "YOUR_SPOT_SECRET",
     "enableRateLimit": True
 })
 
-# Example tickers to scan (you can expand this)
+# List of tickers to scan daily
 TICKERS = ["BTC/USD", "ETH/USD", "LTC/USD", "XRP/USD"]
 
 def ai_score(ticker):
-    """Placeholder AI function to rate a ticker 0-1 (higher is better)"""
-    # Replace this with real AI logic (trend analysis, volatility, volume, etc.)
+    """AI placeholder: score 0-1, higher is better"""
+    # Replace with real AI logic (trend, volatility, volume)
     return random.uniform(0.1, 1.0)
 
 def scan_market():
+    """Return tickers sorted by AI score descending"""
     results = []
     for symbol in TICKERS:
         try:
@@ -32,12 +33,8 @@ def scan_market():
             })
         except Exception as e:
             print(f"❌ Error fetching {symbol}: {e}")
-    # Sort by score descending
     results.sort(key=lambda x: x['ai_score'], reverse=True)
+    # Save top tickers for webhook use
+    with open("ai_top_tickers.json", "w") as f:
+        json.dump(results[:5], f)
     return results
-
-if __name__ == "__main__":
-    top_tickers = scan_market()
-    print("📊 Top AI tickers for today:")
-    for t in top_tickers[:5]:
-        print(t)
