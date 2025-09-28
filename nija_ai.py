@@ -39,3 +39,19 @@ def execute_trade(symbol, side, amount, market_type="spot"):
     except Exception as e:
         print("❌ Trade failed:", repr(e))
         traceback.print_exc()
+
+import ccxt
+import os
+
+COINBASE_SPOT_KEY = os.getenv("COINBASE_SPOT_KEY")
+COINBASE_SPOT_SECRET = os.getenv("COINBASE_SPOT_SECRET")
+
+spot = None
+if COINBASE_SPOT_KEY and COINBASE_SPOT_SECRET:
+    spot = ccxt.coinbase({     # <--- use coinbase not coinbasepro
+        "apiKey": COINBASE_SPOT_KEY,
+        "secret": COINBASE_SPOT_SECRET,
+        "enableRateLimit": True,
+        "timeout": 30000,      # 30s timeout
+        # "verbose": True,     # uncomment for debug verbose logging
+    })
