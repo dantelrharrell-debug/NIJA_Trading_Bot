@@ -12,28 +12,17 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# ======== Initialize Coinbase Clients ========
+# ======== Initialize Coinbase Client (Spot & Futures) ========
 try:
-    spot_client = ccxt.coinbasepro({
+    coinbase_client = ccxt.coinbase({
         'apiKey': os.getenv("COINBASE_SPOT_KEY"),
         'secret': os.getenv("COINBASE_SPOT_SECRET"),
         'password': os.getenv("COINBASE_SPOT_PASSPHRASE"),
     })
-    spot_client.load_markets()
-    logging.info("✅ Spot client initialized (Coinbase)")
+    coinbase_client.load_markets()
+    logging.info("✅ Coinbase Spot & Futures client initialized")
 except Exception as e:
-    logging.exception("❌ Spot client failed to initialize: %s", e)
-
-try:
-    futures_client = ccxt.coinbase({
-        'apiKey': os.getenv("COINBASE_FUTURES_KEY"),
-        'secret': os.getenv("COINBASE_FUTURES_SECRET"),
-        'password': os.getenv("COINBASE_FUTURES_PASSPHRASE"),
-    })
-    futures_client.load_markets()
-    logging.info("✅ Futures client initialized (Coinbase)")
-except Exception as e:
-    logging.exception("❌ Futures client failed to initialize: %s", e)
+    logging.exception("❌ Coinbase client failed to initialize: %s", e)
 
 # ======== Webhook Route ========
 @app.route("/webhook", methods=["POST"])
@@ -85,14 +74,18 @@ def webhook():
         amount = float(order["amount"])
         market_type = order.get("market", "spot").lower()  # default to spot
 
-        client = spot_client if market_type == "spot" else futures_client
-
         try:
             logging.info("Placing %s order for %s %s", side, amount, symbol)
-            resp = client.create_order(symbol, "market", side, amount)
-            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "success", "exchange_resp": resp})
+            resp = coinbase_client.create_order(symbol, "market", side, amount)
+            results.append({
+                "symbol": symbol,
+                "side": side,
+                "amount": amount,
+                "status": "success",
+                "exchange_resp": resp
+            })
         except ccxt.AuthenticationError as e:
-            logging.exception("❌ Authentication failed for %s client", market_type)
+            logging.exception("❌ Authentication failed")
             results.append({"symbol": symbol, "side": side, "amount": amount, "status": "auth_failed", "error": str(e)})
         except Exception as e:
             logging.exception("❌ Order failed")
