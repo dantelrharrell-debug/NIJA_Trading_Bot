@@ -1,140 +1,112 @@
-# main.py
-import os, re, traceback
-from decimal import Decimal, InvalidOperation
+import os
+import json
+import logging
 from flask import Flask, request, jsonify
+import ccxt
 from dotenv import load_dotenv
-import nija_ai
-import os
 
-import os
-from flask import Flask, request, jsonify
-
-app = Flask(__name__)
-
-# Read secret from environment
-TRADINGVIEW_SECRET = os.getenv("TRADINGVIEW_SECRET", "mysecret")
-
-TRADINGVIEW_SECRET = os.getenv("TRADINGVIEW_SECRET", "mysecret")
-
+# Load environment variables
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__)
-DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
 
-# Mask keys when printing
-KEY_RE = re.compile(r'^[A-Za-z0-9\-_]{20,}$')
+# ======== Initialize Coinbase Clients ========
+try:
+    spot_client = ccxt.coinbasepro({
+        'apiKey': os.getenv("COINBASE_SPOT_KEY"),
+        'secret': os.getenv("COINBASE_SPOT_SECRET"),
+        'password': os.getenv("COINBASE_SPOT_PASSPHRASE"),
+    })
+    spot_client.load_markets()
+    logging.info("✅ Spot client initialized (Coinbase)")
+except Exception as e:
+    logging.exception("❌ Spot client failed to initialize: %s", e)
 
-def mask_value(v):
-    if not isinstance(v, str):
-        return v
-    v_str = v.strip()
-    if KEY_RE.match(v_str):
-        return v_str[:4] + "..." + v_str[-4:]
-    return re.sub(r'([A-Za-z0-9\-_]{20,})', lambda m: m.group(0)[:4] + "..." + m.group(0)[-4:], v_str)
+try:
+    futures_client = ccxt.coinbase({
+        'apiKey': os.getenv("COINBASE_FUTURES_KEY"),
+        'secret': os.getenv("COINBASE_FUTURES_SECRET"),
+        'password': os.getenv("COINBASE_FUTURES_PASSPHRASE"),
+    })
+    futures_client.load_markets()
+    logging.info("✅ Futures client initialized (Coinbase)")
+except Exception as e:
+    logging.exception("❌ Futures client failed to initialize: %s", e)
 
-def mask_payload(obj):
-    if isinstance(obj, dict):
-        return {k: mask_payload(v) for k,v in obj.items()}
-    if isinstance(obj, list):
-        return [mask_payload(v) for v in obj]
-    if isinstance(obj, str):
-        return mask_value(obj)
-    return obj
-
+# ======== Webhook Route ========
 @app.route("/webhook", methods=["POST"])
-def webhook_post():
+def webhook():
+    logging.info("---- WEBHOOK RECEIVED ----")
+    headers = dict(request.headers)
+    raw_body = request.get_data(as_text=True)
+    logging.info("Headers: %s", headers)
+    logging.info("Raw body: %s", raw_body)
+
+    # Optional: Verify webhook secret
+    secret = os.getenv("TRADINGVIEW_WEBHOOK_SECRET")
+    if secret and headers.get("Tradingview-Webhook-Secret") != secret:
+        logging.warning("❌ Webhook secret mismatch")
+        return jsonify({"ok": False, "error": "webhook secret mismatch"}), 400
+
+    # Parse JSON (handles double-encoded JSON)
     try:
-        raw = request.get_json(force=True, silent=True)
-        masked = mask_payload(raw) if raw is not None else None
-        print("📩 Signal Received (masked):", masked)
-
-        if not raw:
-            return jsonify({"status":"error","message":"invalid json or empty body"}), 400
-
-        # Parse fields
-        symbol = raw.get("symbol", "BTC-USD")
-        if isinstance(symbol, str):
-            symbol = symbol.replace("/", "-")
-            # If symbol like DOGEUSD -> DOGE-USD
-            if symbol.upper().endswith("USD") and "-" not in symbol:
-                symbol = symbol[:-3] + "-USD"
-
-        side = raw.get("side", "buy")
-        amount_raw = raw.get("amount", None)  # could be qty or USD notional
-        market_type = raw.get("market_type", "spot")
-        ai_signal = raw.get("ai_signal", None)
-        position_percent = raw.get("position_percent", None)
-
-        if amount_raw is None:
-            return jsonify({"status":"error","message":"missing amount"}), 400
-
-        # Try parse amount as Decimal
-        try:
-            amount_dec = Decimal(str(amount_raw).strip())
-        except Exception:
-            return jsonify({"status":"error","message":"invalid amount format"}), 400
-
-        # Detect if amount is USD notional or coin qty:
-        # Heuristic: if amount > 10 and symbol endswith -USD -> treat as USD notional
-        treat_as_usd = False
-        if symbol.upper().endswith("-USD") and amount_dec > Decimal("10"):
-            treat_as_usd = True
-
-        # Convert USD to qty if needed
-        if treat_as_usd:
-            qty = nija_ai.convert_usd_to_qty(symbol, float(amount_dec))
-            if qty is None:
-                return jsonify({"status":"error","message":"failed to convert USD to quantity"}), 500
-            amount_qty = Decimal(str(qty))
-        else:
-            amount_qty = amount_dec
-
-        # Apply position_percent if provided (e.g., position_percent = "10" means 10%)
-        if position_percent:
-            try:
-                scale = Decimal(str(position_percent)) / Decimal("100")
-                if scale > 0:
-                    amount_qty = amount_qty * scale
-            except Exception:
-                pass
-
-        # Apply AI scaling based on history
-        perf = nija_ai.last_trade_profit_percent(symbol)
-        ai_multiplier = 1.0
-        try:
-            ai_multiplier = float(ai_signal) if ai_signal is not None else 1.0
-        except Exception:
-            ai_multiplier = 1.0
-
-        if perf is not None:
-            if perf > 0.5:
-                ai_multiplier = min(ai_multiplier * 1.05, 2.0)
-            elif perf < -0.5:
-                ai_multiplier = max(ai_multiplier * 0.9, 0.1)
-
-        try:
-            final_amount = float(amount_qty * Decimal(str(ai_multiplier)))
-        except Exception:
-            final_amount = float(amount_qty)
-
-        print(f"Parsed order -> symbol={symbol} side={side} amount={final_amount} market_type={market_type} DRY_RUN={DRY_RUN} perf={perf} ai_mul={ai_multiplier}")
-
-        # If DRY_RUN, simulate and save entry
-        if DRY_RUN:
-            result = nija_ai.execute_trade(symbol, side, final_amount, market_type=market_type, dry_run=True)
-            return jsonify({"status":"dry-run","result": result}), 200
-
-        # Live: execute trade
-        res = nija_ai.execute_trade(symbol, side, final_amount, market_type=market_type, dry_run=False)
-        if res.get("error"):
-            return jsonify({"status":"error","message": res["error"]}), 500
-        return jsonify({"status":"success","result": res}), 200
-
+        data = request.get_json(silent=True)
+        if data is None:
+            parsed_once = json.loads(raw_body)
+            if isinstance(parsed_once, str):
+                data = json.loads(parsed_once)
+            else:
+                data = parsed_once
     except Exception as e:
-        print("❌ Unexpected exception in webhook_post:", repr(e))
-        traceback.print_exc()
-        return jsonify({"status":"error","message":"internal server error"}), 500
+        logging.exception("❌ JSON parse failed")
+        return jsonify({"ok": False, "error": "invalid JSON", "details": str(e)}), 400
 
+    logging.info("Parsed JSON: %s", data)
+
+    # Normalize payload to list of orders
+    orders = data if isinstance(data, list) else [data]
+
+    # Validate required fields
+    required_keys = {"symbol", "side", "amount"}
+    for order in orders:
+        if not isinstance(order, dict):
+            return jsonify({"ok": False, "error": "order not a JSON object"}), 400
+        missing = list(required_keys - set(order.keys()))
+        if missing:
+            return jsonify({"ok": False, "error": "missing required fields", "missing": missing}), 400
+
+    # ======== Execute Orders ========
+    results = []
+    for order in orders:
+        symbol = order["symbol"]
+        side = order["side"].lower()
+        amount = float(order["amount"])
+        market_type = order.get("market", "spot").lower()  # default to spot
+
+        client = spot_client if market_type == "spot" else futures_client
+
+        try:
+            logging.info("Placing %s order for %s %s", side, amount, symbol)
+            resp = client.create_order(symbol, "market", side, amount)
+            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "success", "exchange_resp": resp})
+        except ccxt.AuthenticationError as e:
+            logging.exception("❌ Authentication failed for %s client", market_type)
+            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "auth_failed", "error": str(e)})
+        except Exception as e:
+            logging.exception("❌ Order failed")
+            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "error", "error": str(e)})
+
+    return jsonify({"ok": True, "results": results}), 200
+
+# ======== Health Check ========
+@app.route("/", methods=["GET"])
+def index():
+    return "NijaBot is live! 🚀", 200
+
+# ======== Run Flask ========
 if __name__ == "__main__":
-    print("✅ NijaBot webhook listening on /webhook")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    port = int(os.environ.get("PORT", 8080))
+    logging.info(f"Starting NijaBot on port {port}")
+    app.run(host="0.0.0.0", port=port)
