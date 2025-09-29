@@ -24,7 +24,25 @@ try:
 except Exception as e:
     logging.exception("❌ Coinbase client failed to initialize: %s", e)
 
-# ======== Webhook Route ========
+#
+            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "auth_failed", "error": str(e)})
+        except Exception as e:
+            logging.exception("❌ Order failed")
+            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "error", "error": str(e)})
+
+    return jsonify({"ok": True, "results": results}), 200
+
+# ======== Health Check ========
+@app.route("/", methods=["GET"])
+def index():
+    return "NijaBot is live! 🚀", 200
+
+# ======== Run Flask ========
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    logging.info(f"Starting NijaBot on port {port}")
+    app.run(host="0.0.0.0", port=port)
+ ======== Webhook Route ========
 @app.route("/webhook", methods=["POST"])
 def webhook():
     logging.info("---- WEBHOOK RECEIVED ----")
@@ -86,20 +104,3 @@ def webhook():
             })
         except ccxt.AuthenticationError as e:
             logging.exception("❌ Authentication failed")
-            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "auth_failed", "error": str(e)})
-        except Exception as e:
-            logging.exception("❌ Order failed")
-            results.append({"symbol": symbol, "side": side, "amount": amount, "status": "error", "error": str(e)})
-
-    return jsonify({"ok": True, "results": results}), 200
-
-# ======== Health Check ========
-@app.route("/", methods=["GET"])
-def index():
-    return "NijaBot is live! 🚀", 200
-
-# ======== Run Flask ========
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    logging.info(f"Starting NijaBot on port {port}")
-    app.run(host="0.0.0.0", port=port)
