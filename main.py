@@ -1,56 +1,24 @@
-# main.py
+from flask import Flask, request
+import json
 import os
 import ccxt
-import json
-import traceback
-from flask import Flask, request
-from dotenv import load_dotenv
 
-# ---------------------------
-# Load environment variables
-# ---------------------------
-load_dotenv()
-
-# Coinbase keys
-COINBASE_SPOT_KEY = os.getenv(2a4c1446-bd46-4dc0-99d4-90bf15089ce4)
-COINBASE_SPOT_SECRET = os.getenv(nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ)
-COINBASE_SPOT_PASSPHRASE = os.getenv('COINBASE_SPOT_PASSPHRASE')
-
-COINBASE_FUTURES_KEY = os.getenv(2a4c1446-bd46-4dc0-99d4-90bf15089ce4)
-COINBASE_FUTURES_SECRET = os.getenv(nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ)
-COINBASE_FUTURES_PASSPHRASE = os.getenv('COINBASE_FUTURES_PASSPHRASE')
-
-# ---------------------------
-# Initialize Coinbase clients
-# ---------------------------
-try:
-    spot_client = ccxt.coinbase({
-        'apiKey': COINBASE_SPOT_KEY,2a4c1446-bd46-4dc0-99d4-90bf15089ce4
-        'secret': COINBASE_SPOT_SECRET,nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ
-        'password': COINBASE_SPOT_PASSPHRASE,
-        'enableRateLimit': True,
-    })
-    futures_client = ccxt.coinbase({
-        'apiKey': COINBASE_FUTURES_KEY,2a4c1446-bd46-4dc0-99d4-90bf15089ce4
-        'secret': COINBASE_FUTURES_SECRET,nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ
-        'password': COINBASE_FUTURES_PASSPHRASE,
-        'enableRateLimit': True,
-    })
-
-    # Test connections
-    spot_markets = spot_client.fetch_markets()
-    futures_markets = futures_client.fetch_markets()
-    print(f"✅ Spot Auth Success! Markets: {len(spot_markets)}")
-    print(f"✅ Futures Auth Success! Markets: {len(futures_markets)}")
-except Exception as e:
-    print("❌ Coinbase auth failed:", type(e).__name__, str(e))
-    traceback.print_exc()
-    exit(1)
-
-# ---------------------------
-# Initialize Flask app
-# ---------------------------
 app = Flask(__name__)
+
+# Initialize Spot and Futures clients
+SPOT_CLIENT = ccxt.coinbase({
+    'apiKey': os.getenv("COINBASE_SPOT_KEY"),
+    'secret': os.getenv("COINBASE_SPOT_SECRET"),
+    'password': os.getenv("COINBASE_SPOT_PASSPHRASE"),
+    'enableRateLimit': True,
+})
+
+FUTURES_CLIENT = ccxt.coinbase({
+    'apiKey': os.getenv("COINBASE_FUTURES_KEY"),
+    'secret': os.getenv("COINBASE_FUTURES_SECRET"),
+    'password': os.getenv("COINBASE_FUTURES_PASSPHRASE"),
+    'enableRateLimit': True,
+})
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -58,40 +26,42 @@ def webhook():
     print("INFO: Raw body received:", raw_body)
 
     # Try to parse JSON
-    parsed = None
     try:
-        parsed = json.loads(raw_body)
-        print("✅ Parsed JSON:", parsed)
+        alert = json.loads(raw_body)
+        print("✅ Parsed JSON:", alert)
     except json.JSONDecodeError:
         print("⚠️ Webhook body is not JSON, processing as plain text")
-        parsed = {"raw_text": raw_body}
+        alert = {"raw_text": raw_body}
 
-    # Determine trade type and execute
-    side = parsed.get("side")
-    symbol = parsed.get("symbol")
-    market_type = parsed.get("market_type", "spot")  # default to spot
+    # Determine which client to use
+    client = None
+    market_type = "unknown"
 
-    if side and symbol:
-        if market_type.lower() == "futures":
-            client = futures_client
-        else:
-            client = spot_client
+    # Example JSON alert: {"symbol": "BTC/USD", "side": "buy", "amount": "0.001", "market": "spot"}
+    if "market" in alert:
+        if alert["market"].lower() == "spot":
+            client = SPOT_CLIENT
+            market_type = "Spot"
+        elif alert["market"].lower() == "futures":
+            client = FUTURES_CLIENT
+            market_type = "Futures"
 
-        print(f"Trading signal: {side.upper()} {symbol} on {market_type.upper()}")
-        # TODO: Add your trade execution logic:
-        # client.create_order(symbol, 'market', side, amount)
+    # Place a test order if valid
+    if client and "symbol" in alert and "side" in alert and "amount" in alert:
+        symbol = alert["symbol"]
+        side = alert["side"]
+        amount = float(alert["amount"])
+        try:
+            print(f"🔔 Placing {side.upper()} order for {amount} {symbol} on {market_type}")
+            order = client.create_order(symbol, 'market', side, amount)
+            print("✅ Order placed:", order)
+        except Exception as e:
+            print(f"❌ Order failed:", type(e).__name__, e)
     else:
-        print(f"Received plain text alert: {parsed['raw_text']}")
+        print(f"⚠️ Ignored webhook: {alert}")
 
     return "OK", 200
 
-# ---------------------------
-# Start Nija Trading Bot
-# ---------------------------
-print("🚀 Starting Nija Trading Bot...")
-
-# ---------------------------
-# Run Flask server
-# ---------------------------
 if __name__ == "__main__":
+    print("🚀 Nija Trading Bot Webhook running on port 8080")
     app.run(host="0.0.0.0", port=8080)
