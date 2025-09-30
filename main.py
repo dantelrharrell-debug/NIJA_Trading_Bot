@@ -9,8 +9,8 @@ from flask import Flask, request
 # 2️⃣ Coinbase Advanced API setup — put this right after imports
 # ================================
 exchange = ccxt.coinbase({
-    'apiKey': 'YOUR_KEY',
-    'secret': 'YOUR_SECRET',
+    'apiKey': f0e7ae67-cf8a-4aee-b3cd-17227a1b8267,
+    'secret': nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49\nAwEHoUQDQgAE5CYAzKXSBdJiImcZpOgnVd6wcBWwgnY68vUn5WgYOCasLM2vQnz5\npD19178P28YHuOcz9HBY3/B8kc29/SuvLA,
     'password': 'YOUR_PASSPHRASE',  # from Coinbase Advanced API
 })
 
