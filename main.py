@@ -1,3 +1,44 @@
+# ================================
+# 1️⃣ Imports — put all imports here
+# ================================
+import ccxt        # <-- put this here
+import json
+from flask import Flask, request
+
+# ================================
+# 2️⃣ Coinbase Advanced API setup — put this right after imports
+# ================================
+exchange = ccxt.coinbase({
+    'apiKey': 'YOUR_KEY',
+    'secret': 'YOUR_SECRET',
+    'password': 'YOUR_PASSPHRASE',  # from Coinbase Advanced API
+})
+
+# Optional: test connection immediately
+try:
+    balance = exchange.fetch_balance()
+    print("Coinbase connection successful! Balance:", balance)
+except Exception as e:
+    print("Error connecting to Coinbase:", e)
+
+# ================================
+# 3️⃣ Your existing bot / webhook logic
+# ================================
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = json.loads(request.data)
+    print("Received alert:", data)
+    # Example trade logic:
+    # order = exchange.create_order(...)
+    return "Webhook received", 200
+
+# ================================
+# 4️⃣ Start your bot server
+# ================================
+if __name__ == '__main__':
+    app.run(port=5000)
 from flask import Flask, jsonify, render_template_string
 import os
 import datetime
