@@ -12,12 +12,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Coinbase keys
-COINBASE_SPOT_KEY = os.getenv('COINBASE_SPOT_KEY')
-COINBASE_SPOT_SECRET = os.getenv('COINBASE_SPOT_SECRET')
+COINBASE_SPOT_KEY = os.getenv(2a4c1446-bd46-4dc0-99d4-90bf15089ce4)
+COINBASE_SPOT_SECRET = os.getenv(nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ)
 COINBASE_SPOT_PASSPHRASE = os.getenv('COINBASE_SPOT_PASSPHRASE')
 
-COINBASE_FUTURES_KEY = os.getenv('COINBASE_FUTURES_KEY')
-COINBASE_FUTURES_SECRET = os.getenv('COINBASE_FUTURES_SECRET')
+COINBASE_FUTURES_KEY = os.getenv(2a4c1446-bd46-4dc0-99d4-90bf15089ce4)
+COINBASE_FUTURES_SECRET = os.getenv(nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ)
 COINBASE_FUTURES_PASSPHRASE = os.getenv('COINBASE_FUTURES_PASSPHRASE')
 
 # ---------------------------
@@ -25,14 +25,14 @@ COINBASE_FUTURES_PASSPHRASE = os.getenv('COINBASE_FUTURES_PASSPHRASE')
 # ---------------------------
 try:
     spot_client = ccxt.coinbase({
-        'apiKey': COINBASE_SPOT_KEY,
-        'secret': COINBASE_SPOT_SECRET,
+        'apiKey': COINBASE_SPOT_KEY,2a4c1446-bd46-4dc0-99d4-90bf15089ce4
+        'secret': COINBASE_SPOT_SECRET,nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ
         'password': COINBASE_SPOT_PASSPHRASE,
         'enableRateLimit': True,
     })
     futures_client = ccxt.coinbase({
-        'apiKey': COINBASE_FUTURES_KEY,
-        'secret': COINBASE_FUTURES_SECRET,
+        'apiKey': COINBASE_FUTURES_KEY,2a4c1446-bd46-4dc0-99d4-90bf15089ce4
+        'secret': COINBASE_FUTURES_SECRET,nMHcCAQEEIHavNM/GobHmwRkHDRfQJ6uhWQGLJ0KLMI+EYiA2x9IVoAoGCCqGSM49\nAwEHoUQDQgAEmky8uc/GH08aFlowCjiyqaxWJ6WMjCnffosr12XBWuoGHufPpTmm\nSZivEoiFYFX5iWakznuBht1rK+nPCojgKQ
         'password': COINBASE_FUTURES_PASSPHRASE,
         'enableRateLimit': True,
     })
