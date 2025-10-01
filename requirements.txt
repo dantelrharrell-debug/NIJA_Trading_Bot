@@ -1,34 +1,8 @@
-# Core FastAPI server
 fastapi==0.109.0
 uvicorn==0.25.0
-
-# Coinbase Advanced API
 coinbase-advanced-py==1.8.2
-
-# Exchange wrapper
-ccxt==4.5.5
-
-# Environment variables
 python-dotenv==1.1.1
-
-# HTTP requests
-requests==2.32.5
-urllib3==1.26.16
-six==1.16.0
-websocket-client==0.40.0
-
-# Data handling & ML (if your strategy uses these)
 numpy==2.3.3
 pandas==2.3.3
 scikit-learn==1.7.2
-joblib==1.5.2
-
-# Security & crypto
-cryptography==46.0.2
-cffi==2.0.0
-
-# Optional: if you still need Flask for any reason
-flask==2.3.3
-
-
-
+requests==2.32.5
