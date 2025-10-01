@@ -1,37 +1,43 @@
+from fastapi import FastAPI, Request
+import uvicorn
 import coinbase_advanced_py as cb
 
-# === YOUR API KEYS ===
+# === Coinbase connection ===
 api_key = "YOUR_API_KEY"
 api_secret = "YOUR_API_SECRET"
-
-# === Connect to Coinbase Advanced ===
 client = cb.CoinbaseAdvanced(api_key=api_key, api_secret=api_secret)
 
-# === Risk Settings ===
-STARTING_BALANCE = 17.95  # Your account balance
-MIN_RISK = 0.02           # 2%
-MAX_RISK = 0.10           # 10%
+# === FastAPI setup ===
+app = FastAPI()
 
-# === Function to calculate trade size based on risk % ===
 def calc_trade_size(balance, risk_percent):
-    return round(balance * risk_percent, 2)  # rounded to 2 decimal places for USD
+    return round(balance * risk_percent, 2)
 
-# === Example: trade BTC-USD with 5% risk ===
-risk_percent = 0.05  # Change between 0.02–0.10 for 2–10%
-trade_amount = calc_trade_size(STARTING_BALANCE, risk_percent)
+@app.post("/trade")
+async def trade(request: Request):
+    data = await request.json()
+    symbol = data["symbol"]
+    side = data["side"]
+    risk_percent = data.get("risk_percent", 0.05)  # default 5%
 
-# === Place a market buy order ===
-try:
+    # Fetch current price
+    price = float(client.get_ticker(symbol)["price"])
+
+    # Fetch current balance (USD only)
+    accounts = client.get_accounts()
+    balance = float([a['balance'] for a in accounts if a['currency']=="USD"][0])
+
+    trade_amount = calc_trade_size(balance, risk_percent)
+    quantity = trade_amount / price
+
+    # Execute order
     order = client.create_order(
-        symbol="BTC-USD",
-        side="buy",
+        symbol=symbol,
+        side=side,
         type="market",
-        quantity=trade_amount / client.get_ticker("BTC-USD")['price']  # convert USD to BTC
+        quantity=quantity
     )
-    print("Trade executed:", order)
-except Exception as e:
-    print("Error placing trade:", e)
+    return {"status": "success", "order": order}
 
-# === Check account balances ===
-balance = client.get_accounts()
-print("Updated account balances:", balance)
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
