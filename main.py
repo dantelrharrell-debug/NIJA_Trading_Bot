@@ -3,8 +3,8 @@ import uvicorn
 import coinbase_advanced_py as cb
 
 # === Coinbase connection ===
-API_KEY = "YOUR_API_KEY"
-API_SECRET = "YOUR_API_SECRET"
+API_KEY = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
+API_SECRET = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
 client = cb.CoinbaseAdvanced(api_key=API_KEY, api_secret=API_SECRET)
 
 # === FastAPI setup ===
