@@ -1,15 +1,9 @@
-import os
 import coinbase_advanced_py as cb
 
-# Replace with your actual API keys
-api_key = "YOUR_API_KEY"
-api_secret = "YOUR_API_SECRET"
+api_key = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
+api_secret = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
 
 client = cb.CoinbaseAdvanced(api_key=api_key, api_secret=api_secret)
 
-# Test connection and print balances
 balance = client.get_accounts()
-print("Your account balances:", balance)
-
-# Now you can add trading logic here
-# Example: client.place_order(...) once you know your strategy
+print(balance)
