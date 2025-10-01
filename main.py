@@ -1,3 +1,5 @@
+# Correct import
+import coinbase_advanced_py as cb
 from fastapi import FastAPI, Request
 import uvicorn
 import coinbase_advanced as cb  # Use this import for Render
