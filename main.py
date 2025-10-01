@@ -1,3 +1,88 @@
+# --- BEGIN robust-import-and-debug for coinbase client ---
+import sys
+import site
+import os
+import importlib
+import traceback
+
+print("=== DEBUG START ===")
+print("sys.executable:", sys.executable)
+print("python version:", sys.version)
+print("First 20 sys.path entries:")
+for p in sys.path[:20]:
+    print("  ", p)
+
+# show typical site-packages locations
+try:
+    sp = site.getsitepackages()
+    print("site.getsitepackages():")
+    for p in sp:
+        print("  ", p)
+except Exception as e:
+    print("site.getsitepackages() failed:", e)
+
+# show user site-packages
+try:
+    up = site.getusersitepackages()
+    print("site.getusersitepackages():", up)
+except Exception as e:
+    print("site.getusersitepackages() failed:", e)
+
+# list coinbase-related files in paths we can access
+candidates_found = []
+paths_to_search = sys.path[:]  # search entire sys.path (limited to first 40 entries below)
+for p in paths_to_search[:40]:
+    try:
+        if not p or not os.path.exists(p):
+            continue
+        for fname in os.listdir(p):
+            name = fname.lower()
+            if name.startswith("coinbase") or "coinbase" in name:
+                candidates_found.append(os.path.join(p, fname))
+    except Exception:
+        pass
+
+print("Coinbase-related files/dirs found (first 30):")
+for i, f in enumerate(candidates_found[:30]):
+    print(f"  {i+1}. {f}")
+
+# Try a series of likely import names and stop on the first that works
+import_names = [
+    "coinbase_advanced_py",
+    "coinbase_advanced",
+    "coinbase_advanced_py.client",
+    "coinbase.advanced",   # unlikely but harmless to try
+    "coinbase"             # just in case package nested
+]
+
+cb = None
+successful_name = None
+for name in import_names:
+    try:
+        mod = importlib.import_module(name)
+        cb = mod
+        successful_name = name
+        print(f"✅ Successfully imported '{name}' as cb")
+        break
+    except Exception as e:
+        print(f"Import failed for '{name}': {e.__class__.__name__}: {e}")
+
+if cb is None:
+    print("❌ Could not import any of the expected module names. Full traceback for the last attempt:")
+    traceback.print_exc()
+    print()
+    print("If the build logs showed 'Successfully installed coinbase-advanced-py-1.8.2', but imports still fail:")
+    print("- Confirm your requirements.txt contains exactly: coinbase-advanced-py==1.8.2")
+    print("- Ensure Render rebuilt after that change (trigger a redeploy).")
+    print("- If installed in a path not shown in sys.path, we can add it with site.addsitedir(path).")
+    print("- Paste the above DEBUG output to me and I will tell you the exact site.addsitedir(...) line to add.")
+else:
+    # expose 'cb' to rest of module
+    globals()["cb"] = cb
+    globals()["_COINBASE_IMPORT_NAME"] = successful_name
+
+print("=== DEBUG END ===\n")
+# --- END robust-import-and-debug for coinbase client ---
 # main.py
 import os
 import logging
