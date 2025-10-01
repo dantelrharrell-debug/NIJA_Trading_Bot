@@ -15,3 +15,5 @@ requests
 ccxt==3.0.81
 requests==2.31.0
 coinbase-advanced-py==1.8.2
+fastapi
+uvicorn
