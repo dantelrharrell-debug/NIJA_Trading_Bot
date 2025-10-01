@@ -1,71 +1,90 @@
 import os
-import json
-from flask import Flask, request, render_template_string
-import ccxt
+import time
+import csv
+from datetime import datetime
+import coinbase_advanced_py as cb
 
-# Coinbase clients via env vars
-SPOT_CLIENT = ccxt.coinbase({
-    'apiKey': os.getenv("COINBASE_SPOT_KEY"),
-    'secret': os.getenv("COINBASE_SPOT_SECRET"),
-    'password': os.getenv("COINBASE_SPOT_PASSPHRASE"),
-    'enableRateLimit': True,
-})
+# ======================
+# CONFIG FROM ENV
+# ======================
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+SANDBOX = os.getenv("SANDBOX", "True") == "True"  # True for testing
+TRADING_SYMBOL = os.getenv("TRADING_SYMBOL", "BTC-USD")
+TRADE_AMOUNT = float(os.getenv("TRADE_AMOUNT", 10))  # USD per trade
+SLEEP_INTERVAL = int(os.getenv("SLEEP_INTERVAL", 10))  # Seconds between checks
 
-FUTURES_CLIENT = ccxt.coinbase({
-    'apiKey': os.getenv("COINBASE_FUTURES_KEY"),
-    'secret': os.getenv("COINBASE_FUTURES_SECRET"),
-    'password': os.getenv("COINBASE_FUTURES_PASSPHRASE"),
-    'enableRateLimit': True,
-})
+# AI-inspired strategy settings
+PRICE_HISTORY = []
+LOOKBACK = 5
+MOMENTUM_THRESHOLD = 0.002  # 0.2% movement triggers trade
 
-# Test connections (will print 401 if keys missing/invalid)
-try:
-    print("Spot balance:", SPOT_CLIENT.fetch_balance())
-except Exception as e:
-    print("Error connecting to Spot:", e)
+# CSV log file
+LOG_FILE = "trades.csv"
 
-try:
-    print("Futures balance:", FUTURES_CLIENT.fetch_balance())
-except Exception as e:
-    print("Error connecting to Futures:", e)
+# ======================
+# CONNECT TO COINBASE
+# ======================
+client = cb.CoinbaseAdvanced(api_key=API_KEY, api_secret=API_SECRET, sandbox=SANDBOX)
+print(f"[{datetime.now()}] Connected to Coinbase Advanced (Sandbox={SANDBOX})")
 
-app = Flask(__name__)
+# ======================
+# FUNCTIONS
+# ======================
+def check_balance(currency="USD"):
+    balances = client.get_accounts()
+    for b in balances:
+        if b['currency'] == currency:
+            return float(b['balance'])
+    return 0.0
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
+def get_price(symbol):
+    ticker = client.get_product_ticker(symbol)
+    return float(ticker['price'])
+
+def place_order(side, symbol, amount):
+    print(f"[{datetime.now()}] Placing {side.upper()} order for ${amount} of {symbol}")
     try:
-        data = json.loads(request.data)
-        print("Received alert:", data)
-
-        market = data.get("market", "spot").lower()
-        symbol = data.get("symbol")
-        side = data.get("side")
-        amount = float(data.get("amount", 0))
-
-        if not symbol or side not in ['buy', 'sell'] or amount <= 0:
-            return "Invalid order data", 400
-
-        client = SPOT_CLIENT if market == "spot" else FUTURES_CLIENT
-        client.load_markets()
-        min_size = float(client.markets[symbol]['limits']['amount']['min'])
-        if amount < min_size:
-            print(f"Adjusting amount {amount} -> min {min_size}")
-            amount = min_size
-
-        order = client.create_order(symbol=symbol, type='market', side=side, amount=amount)
-        print("Order submitted:", order)
-        return "Order executed", 200
-
+        order = client.place_order(product_id=symbol, side=side, order_type="market", funds=str(amount))
+        print(f"[{datetime.now()}] Order details: {order}")
+        log_trade(side, symbol, amount, get_price(symbol))
     except Exception as e:
-        print("Error processing webhook:", e)
-        return f"Error: {str(e)}", 500
+        print(f"[{datetime.now()}] Order error: {e}")
 
-@app.route("/", methods=["GET"])
-def root():
-    return "<h2>Nija Trading Bot is live (Spot + Futures)</h2>", 200
+def log_trade(side, symbol, usd_amount, price):
+    file_exists = os.path.isfile(LOG_FILE)
+    with open(LOG_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["timestamp", "side", "symbol", "usd_amount", "price"])
+        writer.writerow([datetime.now(), side, symbol, usd_amount, price])
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+def nija_strategy(current_price):
+    PRICE_HISTORY.append(current_price)
+    if len(PRICE_HISTORY) < LOOKBACK:
+        return
 
+    momentum = (current_price - PRICE_HISTORY[-LOOKBACK]) / PRICE_HISTORY[-LOOKBACK]
+    usd_balance = check_balance("USD")
+    crypto_balance = check_balance(TRADING_SYMBOL.split("-")[0])
 
+    if momentum <= -MOMENTUM_THRESHOLD and usd_balance >= TRADE_AMOUNT:
+        place_order("buy", TRADING_SYMBOL, TRADE_AMOUNT)
+    elif momentum >= MOMENTUM_THRESHOLD and crypto_balance > 0:
+        place_order("sell", TRADING_SYMBOL, crypto_balance)
+
+    if len(PRICE_HISTORY) > LOOKBACK:
+        PRICE_HISTORY.pop(0)
+
+# ======================
+# MAIN LOOP
+# ======================
+while True:
+    try:
+        price = get_price(TRADING_SYMBOL)
+        print(f"[{datetime.now()}] Current price of {TRADING_SYMBOL}: ${price}")
+        nija_strategy(price)
+        time.sleep(SLEEP_INTERVAL)
+    except Exception as e:
+        print(f"[{datetime.now()}] Error: {e}")
+        time.sleep(SLEEP_INTERVAL)
