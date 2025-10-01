@@ -1,5 +1,5 @@
 # test_connection.py
-import coinbase_advanced_py as cb
+import coinbase_advanced as cb
 
 # === Your actual API keys ===
 API_KEY = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
