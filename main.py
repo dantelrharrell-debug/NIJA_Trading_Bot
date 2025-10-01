@@ -7,8 +7,8 @@ import coinbase_advanced_py as cb
 # ======================
 # CONFIG FROM ENV
 # ======================
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+API_KEY = os.getenv("f0e7ae67-cf8a-4aee-b3cd-17227a1b8267")
+API_SECRET = os.getenv("nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49")
 SANDBOX = os.getenv("SANDBOX", "True") == "True"  # True for testing
 TRADING_SYMBOL = os.getenv("TRADING_SYMBOL", "BTC-USD")
 TRADE_AMOUNT = float(os.getenv("TRADE_AMOUNT", 10))  # USD per trade
