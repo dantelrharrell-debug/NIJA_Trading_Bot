@@ -1,77 +1,94 @@
-# Correct import
-import coinbase_advanced_py as cb
-from fastapi import FastAPI, Request
-import uvicorn
-import coinbase_advanced as cb  # Use this import for Render
-import os
+# main.py
 
-# === Coinbase connection ===
+import subprocess
+import sys
+import time
+
+# 1️⃣ Ensure coinbase-advanced-py is installed
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    print("Module not found, installing coinbase-advanced-py...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "coinbase-advanced-py==1.8.2"])
+    import coinbase_advanced_py as cb
+
+print("✅ coinbase_advanced_py module is ready!")
+
+# 2️⃣ API keys
 API_KEY = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
 API_SECRET = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
-client = cb.CoinbaseAdvanced(api_key=API_KEY, api_secret=API_SECRET)
 
-# === Webhook security ===
-WEBHOOK_SECRET = "MySuperStrongSecret123!"
+# 3️⃣ Initialize client
+client = cb.CoinbaseAdvanced(API_KEY, API_SECRET)
 
-# === Risk settings ===
+# 4️⃣ Test connection
+try:
+    accounts = client.get_accounts()
+    balance_usd = float([acc['balance'] for acc in accounts if acc['currency'] == 'USD'][0])
+    print(f"✅ Connection successful! USD Balance: ${balance_usd:.2f}")
+except Exception as e:
+    print("❌ Error connecting to Coinbase Advanced:", e)
+    sys.exit(1)
+
+# 5️⃣ Minimum trade amounts for Coinbase
+MIN_TRADE = {"BTC-USD": 0.0001, "ETH-USD": 0.001}
+
+# 6️⃣ Risk parameters (2%-10% of account)
 MIN_RISK = 0.02
 MAX_RISK = 0.10
 
-# === FastAPI setup ===
-app = FastAPI()
+# 7️⃣ Dynamic AI signal function (example placeholder)
+def get_ai_signal(symbol):
+    """
+    Replace this with your AI model output.
+    Returns risk factor between 0.0 and 1.0.
+    """
+    import random
+    # Example: AI outputs 0.02-0.10 range randomly (simulate AI decision)
+    base_risk = random.uniform(0.02, 0.10)
+    print(f"🤖 AI suggested risk for {symbol}: {base_risk*100:.2f}%")
+    return base_risk
 
-# === Trade size calculation ===
-def calc_trade_size(balance, risk_percent):
-    risk_percent = max(MIN_RISK, min(MAX_RISK, risk_percent))
-    return round(balance * risk_percent, 2)
-
-# === Trade endpoint for TradingView ===
-@app.post("/trade")
-async def trade(request: Request):
-    data = await request.json()
-
-    # Security check
-    if data.get("secret") != WEBHOOK_SECRET:
-        return {"status": "error", "message": "Unauthorized"}
-
+# 8️⃣ Function to calculate trade size dynamically
+def calculate_trade_size(symbol, ai_risk):
+    risk = max(MIN_RISK, min(MAX_RISK, ai_risk))  # enforce 2%-10%
+    trade_usd = balance_usd * risk
     try:
-        symbol = data["symbol"]  # e.g., "BTC-USD"
-        side = data["side"].lower()  # "buy" or "sell"
-        risk_percent = float(data.get("risk_percent", 0.05))  # default 5%
+        price = float(client.get_product_ticker(symbol)['price'])
+        quantity = trade_usd / price
+        min_qty = MIN_TRADE.get(symbol, 0)
+        quantity = max(quantity, min_qty)
+        return quantity
     except Exception as e:
-        return {"status": "error", "message": f"Invalid payload: {e}"}
+        print(f"❌ Failed to calculate trade size for {symbol}:", e)
+        return 0
 
-    # Fetch USD balance
-    accounts = client.get_accounts()
-    usd_balance = float([a['balance'] for a in accounts if a['currency'] == "USD"][0])
+# 9️⃣ Place order function
+def place_order(symbol, side):
+    ai_risk = get_ai_signal(symbol)  # AI decides risk dynamically
+    quantity = calculate_trade_size(symbol, ai_risk)
+    if quantity <= 0:
+        print(f"⚠️ Trade quantity too small or failed for {symbol}. Skipping trade.")
+        return None
+    try:
+        print(f"\n💰 Placing {side.upper()} order for {quantity:.6f} {symbol} (risk {ai_risk*100:.2f}%)...")
+        order = client.place_order(
+            symbol=symbol,
+            side=side,
+            order_type="market",
+            quantity=quantity
+        )
+        print("✅ Order executed:", order)
+        return order
+    except Exception as e:
+        print("❌ Failed to execute order:", e)
+        return None
 
-    # Calculate trade amount & quantity
-    trade_amount = calc_trade_size(usd_balance, risk_percent)
-    price = float(client.get_ticker(symbol)["price"])
-    quantity = round(trade_amount / price, 8)
+# 10️⃣ Example: Automated trading loop
+symbols = ["BTC-USD", "ETH-USD"]
+sides = ["buy", "sell"]  # example strategy
+for i, symbol in enumerate(symbols):
+    place_order(symbol, sides[i])
+    time.sleep(1)
 
-    if quantity < 0.0001:  # Coinbase minimum trade size
-        return {"status": "error", "message": "Trade below minimum size"}
-
-    # Execute market order
-    order = client.create_order(
-        symbol=symbol,
-        side=side,
-        type="market",
-        quantity=quantity
-    )
-
-    return {
-        "status": "success",
-        "symbol": symbol,
-        "side": side,
-        "risk_percent": risk_percent,
-        "trade_amount": trade_amount,
-        "quantity": quantity,
-        "price": price,
-        "order": order
-    }
-
-# === Run bot ===
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+print("\n🤖 Dynamic AI Risk Management Bot is live!")
