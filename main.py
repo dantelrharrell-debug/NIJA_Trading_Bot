@@ -1,5 +1,4 @@
 # main.py
-
 import subprocess
 import sys
 import time
@@ -8,11 +7,10 @@ import time
 try:
     import coinbase_advanced_py as cb
 except ModuleNotFoundError:
-    print("Module not found, installing coinbase-advanced-py...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "coinbase-advanced-py==1.8.2"])
     import coinbase_advanced_py as cb
 
-print("✅ coinbase_advanced_py module is ready!")
+print("✅ coinbase_advanced_py module ready!")
 
 # 2️⃣ API keys
 API_KEY = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
@@ -21,74 +19,70 @@ API_SECRET = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
 # 3️⃣ Initialize client
 client = cb.CoinbaseAdvanced(API_KEY, API_SECRET)
 
-# 4️⃣ Test connection
-try:
-    accounts = client.get_accounts()
-    balance_usd = float([acc['balance'] for acc in accounts if acc['currency'] == 'USD'][0])
-    print(f"✅ Connection successful! USD Balance: ${balance_usd:.2f}")
-except Exception as e:
-    print("❌ Error connecting to Coinbase Advanced:", e)
-    sys.exit(1)
-
-# 5️⃣ Minimum trade amounts for Coinbase
+# 4️⃣ Minimum trade amounts
 MIN_TRADE = {"BTC-USD": 0.0001, "ETH-USD": 0.001}
 
-# 6️⃣ Risk parameters (2%-10% of account)
+# 5️⃣ Risk bounds
 MIN_RISK = 0.02
 MAX_RISK = 0.10
 
-# 7️⃣ Dynamic AI signal function (example placeholder)
-def get_ai_signal(symbol):
-    """
-    Replace this with your AI model output.
-    Returns risk factor between 0.0 and 1.0.
-    """
-    import random
-    # Example: AI outputs 0.02-0.10 range randomly (simulate AI decision)
-    base_risk = random.uniform(0.02, 0.10)
-    print(f"🤖 AI suggested risk for {symbol}: {base_risk*100:.2f}%")
-    return base_risk
+# 6️⃣ Function to get current balance
+def get_balance():
+    accounts = client.get_accounts()
+    balance_usd = float([acc['balance'] for acc in accounts if acc['currency'] == 'USD'][0])
+    return balance_usd
 
-# 8️⃣ Function to calculate trade size dynamically
+# 7️⃣ Placeholder AI risk function
+def get_ai_signal(symbol):
+    """Return AI risk factor between 0.02 and 0.10"""
+    import random
+    ai_risk = random.uniform(MIN_RISK, MAX_RISK)
+    print(f"🤖 AI risk for {symbol}: {ai_risk*100:.2f}%")
+    return ai_risk
+
+# 8️⃣ Calculate trade size based on AI risk
 def calculate_trade_size(symbol, ai_risk):
-    risk = max(MIN_RISK, min(MAX_RISK, ai_risk))  # enforce 2%-10%
+    balance_usd = get_balance()
+    risk = max(MIN_RISK, min(MAX_RISK, ai_risk))
     trade_usd = balance_usd * risk
     try:
         price = float(client.get_product_ticker(symbol)['price'])
-        quantity = trade_usd / price
-        min_qty = MIN_TRADE.get(symbol, 0)
-        quantity = max(quantity, min_qty)
-        return quantity
+        quantity = max(trade_usd / price, MIN_TRADE.get(symbol, 0))
+        return round(quantity, 8)  # rounding for Coinbase precision
     except Exception as e:
-        print(f"❌ Failed to calculate trade size for {symbol}:", e)
+        print(f"❌ Error calculating trade size for {symbol}: {e}")
         return 0
 
-# 9️⃣ Place order function
+# 9️⃣ Place market order
 def place_order(symbol, side):
-    ai_risk = get_ai_signal(symbol)  # AI decides risk dynamically
+    ai_risk = get_ai_signal(symbol)
     quantity = calculate_trade_size(symbol, ai_risk)
     if quantity <= 0:
-        print(f"⚠️ Trade quantity too small or failed for {symbol}. Skipping trade.")
-        return None
+        print(f"⚠️ Trade too small for {symbol}. Skipping.")
+        return
     try:
-        print(f"\n💰 Placing {side.upper()} order for {quantity:.6f} {symbol} (risk {ai_risk*100:.2f}%)...")
         order = client.place_order(
             symbol=symbol,
             side=side,
             order_type="market",
             quantity=quantity
         )
-        print("✅ Order executed:", order)
+        print(f"✅ {side.upper()} order executed: {quantity} {symbol}")
         return order
     except Exception as e:
-        print("❌ Failed to execute order:", e)
-        return None
+        print(f"❌ Failed to place order for {symbol}: {e}")
 
-# 10️⃣ Example: Automated trading loop
+# 🔁 Continuous trading loop
 symbols = ["BTC-USD", "ETH-USD"]
-sides = ["buy", "sell"]  # example strategy
-for i, symbol in enumerate(symbols):
-    place_order(symbol, sides[i])
-    time.sleep(1)
+sides = ["buy", "sell"]  # Example alternating strategy
+INTERVAL = 10  # seconds between AI adjustments
 
-print("\n🤖 Dynamic AI Risk Management Bot is live!")
+print("🤖 Dynamic AI Risk Management Bot is live!")
+
+try:
+    while True:
+        for i, symbol in enumerate(symbols):
+            place_order(symbol, sides[i])
+        time.sleep(INTERVAL)  # adjust risk every INTERVAL seconds
+except KeyboardInterrupt:
+    print("🛑 Bot stopped by user")
