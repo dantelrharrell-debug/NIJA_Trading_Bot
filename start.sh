@@ -1,16 +1,13 @@
 #!/bin/bash
 
-# Create virtual environment (if it doesn't exist)
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-fi
+# Activate virtual environment (Render auto-creates venv if you use pip install -r)
+source ./venv/bin/activate || echo "venv not found, continuing..."
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Upgrade pip and install dependencies
+# Upgrade pip just in case
 pip install --upgrade pip
+
+# Make sure dependencies are installed
 pip install -r requirements.txt
 
-# Run your bot
+# Run the bot
 python3 main.py
