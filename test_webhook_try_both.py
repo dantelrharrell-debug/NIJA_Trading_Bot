@@ -3,9 +3,9 @@ import requests, json, time
 WEBHOOK_URL = "https://nija-trading-bot-v9xl.onrender.com/webhook"
 
 tests = [
-    {"name": "Strict Order", "json": {"symbol": "BTC-USD","side":"buy","order_type":"market","amount":0.01}},
-    {"name": "Legacy TV Alert", "json": {"pair":"BTCUSD","allocation_percent":10,"price":50000,"time":"2025-10-02T12:00:00Z","strategy":"buy"}},
-    {"name": "Invalid payload", "json": {"foo":"bar"}}
+    {"name":"Strict Order","json":{"symbol":"BTC-USD","side":"buy","order_type":"market","amount":0.01}},
+    {"name":"Legacy TV Alert","json":{"pair":"BTCUSD","allocation_percent":10,"price":50000,"time":"2025-10-02T12:00:00Z","strategy":"buy"}},
+    {"name":"Invalid payload","json":{"foo":"bar"}}
 ]
 
 for t in tests:
