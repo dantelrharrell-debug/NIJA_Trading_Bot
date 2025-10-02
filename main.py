@@ -1,7 +1,8 @@
-# DEBUG webhook handler — paste into main.py (replaces previous /webhook)
+# Echo debug handler — paste into main.py, redeploy
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, ValidationError
 from typing import Literal, Optional
+import traceback
 
 app = FastAPI()
 
@@ -20,29 +21,28 @@ class LegacyAlert(BaseModel):
 
 @app.post("/webhook")
 async def webhook(req: Request):
+    # Try to read JSON safely
     try:
         raw = await req.json()
     except Exception as e:
-        print("RAW WEBHOOK PAYLOAD: <invalid json>", str(e))
-        return {"status":"error","reason":"invalid_json","detail":str(e)}
+        # Return immediate error with exact exception
+        return {"status":"error","reason":"invalid_json","detail": str(e)}
 
-    # <- COPY THE RAW PAYLOAD FROM RENDER LOGS (this line prints it)
-    print("RAW WEBHOOK PAYLOAD:", raw)
+    # Return the raw payload back to the caller and also include validation attempts
+    result = {"raw_received": raw, "validation": {}}
 
-    # try strict schema
+    # Try strict schema
     try:
         order = Order.parse_obj(raw)
-        print("✅ Valid Order schema received:", order.dict())
-        return {"status":"accepted","schema":"order","order":order.dict()}
-    except ValidationError as e:
-        print("Order schema validation failed:", e.errors())
+        result["validation"]["order"] = {"ok": True, "order": order.dict()}
+    except Exception as e:
+        result["validation"]["order"] = {"ok": False, "error": str(e)}
 
-    # try legacy schema
+    # Try legacy schema
     try:
         legacy = LegacyAlert.parse_obj(raw)
-        print("Legacy alert received:", legacy.dict())
-        return {"status":"accepted","schema":"legacy","converted":legacy.dict()}
-    except ValidationError as e:
-        print("Legacy schema validation failed:", e.errors())
+        result["validation"]["legacy"] = {"ok": True, "legacy": legacy.dict()}
+    except Exception as e:
+        result["validation"]["legacy"] = {"ok": False, "error": str(e)}
 
-    return {"status":"invalid_order_data","received":raw}
+    return result
