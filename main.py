@@ -3,6 +3,8 @@ import uvicorn
 import coinbase_advanced_py as cb
 import os
 import time
+import numpy as np
+from collections import deque
 
 # ======================
 # CONFIG
@@ -11,15 +13,17 @@ API_KEY = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
 API_SECRET = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
 SANDBOX = False  # True = test, False = live
 
-DEFAULT_TRADE_AMOUNT = 10  # USD per trade
+DEFAULT_TRADE_AMOUNT = 10
 MAX_TRADE_AMOUNT = 100
 MIN_USD_BALANCE = 5
+TRADE_HISTORY_LIMIT = 100
 
-TRADE_HISTORY_LIMIT = 50
-STOP_LOSS_PERCENT = 0.05  # 5% loss
-TAKE_PROFIT_PERCENT = 0.10  # 10% gain
+BASE_STOP_LOSS = 0.05
+BASE_TAKE_PROFIT = 0.10
+FUTURES_AVAILABLE = True  # For shorting/downside profit
 
-FUTURES_AVAILABLE = True  # If Coinbase Futures account is accessible
+TRADE_COINS = ["BTC-USD", "ETH-USD", "LTC-USD", "SOL-USD"]
+PRICE_HISTORY_LENGTH = 50  # for correlation & predictive calculations
 
 # ======================
 # CONNECT TO COINBASE
@@ -37,15 +41,17 @@ except Exception as e:
 app = FastAPI()
 
 # ======================
-# TRADE HISTORY & POSITIONS
+# TRACKING STRUCTURES
 # ======================
 trade_history = []
-open_positions = {}  # {coin: [positions]}
-hedge_positions = {}  # {coin: [hedges]}
+open_positions = {}       # {coin: [positions]}
+hedge_positions = {}      # {coin: [hedges]}
 session_pnl = 0.0
 
+price_history = {coin: deque(maxlen=PRICE_HISTORY_LENGTH) for coin in TRADE_COINS}
+
 # ======================
-# HELPERS
+# HELPER FUNCTIONS
 # ======================
 def get_usd_balance():
     try:
@@ -71,13 +77,40 @@ def get_crypto_balance(symbol):
 def get_price(symbol):
     try:
         ticker = client.get_product_ticker(symbol)
-        return float(ticker['price'])
+        price = float(ticker['price'])
+        price_history[symbol].append(price)
+        return price
     except Exception as e:
         print(f"❌ Error fetching price for {symbol}:", e)
         return 0.0
 
+# ======================
+# AI / PREDICTIVE FUNCTIONS
+# ======================
+def compute_correlation_matrix():
+    """Compute rolling correlations between coins."""
+    data = []
+    coins = TRADE_COINS
+    for coin in coins:
+        hist = list(price_history[coin])
+        if len(hist) < 2:
+            hist = [get_price(coin)] * 2
+        data.append(hist[-PRICE_HISTORY_LENGTH:])
+    return np.corrcoef(data)
+
+def predictive_signal(symbol):
+    """Generate a confidence score for a trade (0-1)."""
+    prices = list(price_history[symbol])
+    if len(prices) < 2:
+        return 0.5
+    short_ma = np.mean(prices[-5:])
+    long_ma = np.mean(prices[-15:])
+    momentum = prices[-1] - prices[-2]
+    confidence = 0.5 + 0.3 * np.sign(short_ma - long_ma) + 0.2 * np.sign(momentum)
+    confidence = max(0, min(1, confidence))
+    return confidence
+
 def calculate_pnl(symbol, action, amount_usd, price, hedge=False):
-    """Calculate PnL and update session."""
     global session_pnl
     positions = hedge_positions if hedge else open_positions
     crypto = symbol.split("-")[0]
@@ -87,7 +120,6 @@ def calculate_pnl(symbol, action, amount_usd, price, hedge=False):
             positions[crypto] = []
         positions[crypto].append({"amount_usd": amount_usd, "price": price})
         return 0.0
-
     elif action.lower() == "sell":
         if crypto not in positions or len(positions[crypto]) == 0:
             return 0.0
@@ -99,44 +131,24 @@ def calculate_pnl(symbol, action, amount_usd, price, hedge=False):
         return pnl
     return 0.0
 
+def volatility_adjusted_targets(symbol):
+    price = get_price(symbol)
+    volatility_factor = np.std(list(price_history[symbol])) / price if len(price_history[symbol]) > 1 else 0.02
+    stop_loss = max(BASE_STOP_LOSS, volatility_factor)
+    take_profit = max(BASE_TAKE_PROFIT, volatility_factor * 2)
+    return stop_loss, take_profit
+
 def check_stop_take(symbol, hedge=False):
     positions = hedge_positions if hedge else open_positions
     crypto = symbol.split("-")[0]
     if crypto not in positions:
         return
     price = get_price(symbol)
+    stop_loss, take_profit = volatility_adjusted_targets(symbol)
     for pos in positions[crypto][:]:
         pnl_percent = (price - pos["price"]) / pos["price"]
-        if pnl_percent <= -STOP_LOSS_PERCENT:
+        if pnl_percent <= -stop_loss:
             print(f"⚠ Stop-loss hit for {crypto} at ${price}")
             place_order(symbol, "sell", pos["amount_usd"], hedge=hedge)
             positions[crypto].remove(pos)
-        elif pnl_percent >= TAKE_PROFIT_PERCENT:
-            print(f"💰 Take-profit hit for {crypto} at ${price}")
-            place_order(symbol, "sell", pos["amount_usd"], hedge=hedge)
-            positions[crypto].remove(pos)
-
-def adjust_trade_amount(default_amount):
-    if len(trade_history) < 3:
-        return default_amount
-    recent = trade_history[-3:]
-    wins = sum(1 for t in recent if t["pnl"] > 0)
-    if wins >= 2:
-        return min(default_amount * 1.1, MAX_TRADE_AMOUNT)
-    else:
-        return max(default_amount * 0.9, 1)
-
-def place_order(symbol, side, amount_usd, hedge=False):
-    if amount_usd > MAX_TRADE_AMOUNT:
-        amount_usd = MAX_TRADE_AMOUNT
-
-    usd_balance = get_usd_balance()
-    crypto_balance = get_crypto_balance(symbol)
-
-    if side.lower() == "buy" and usd_balance < MIN_USD_BALANCE:
-        print(f"⚠ USD balance too low (${usd_balance}). Trade skipped")
-        return None
-
-    if side.lower() == "sell" and crypto_balance <= 0:
-        print(f"⚠ No crypto to sell ({symbol}). Trade skipped")
-        return
+        elif
