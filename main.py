@@ -1,8 +1,8 @@
-# Echo debug handler — paste into main.py, redeploy
+# Echo debug handler — paste into main.py and redeploy
 from fastapi import FastAPI, Request
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from typing import Literal, Optional
-import traceback
+import json
 
 app = FastAPI()
 
@@ -21,14 +21,23 @@ class LegacyAlert(BaseModel):
 
 @app.post("/webhook")
 async def webhook(req: Request):
-    # Try to read JSON safely
+    # read body
     try:
         raw = await req.json()
     except Exception as e:
-        # Return immediate error with exact exception
-        return {"status":"error","reason":"invalid_json","detail": str(e)}
+        # If body is plain text or stringified JSON, return the raw text too
+        text = await req.body()
+        return {"status": "invalid_json", "error": str(e), "raw_text": text.decode(errors="replace")}
 
-    # Return the raw payload back to the caller and also include validation attempts
+    # Try to parse nested stringified JSON automatically (common case)
+    if isinstance(raw, str):
+        try:
+            raw_parsed = json.loads(raw)
+            raw = raw_parsed
+        except Exception:
+            pass
+
+    # Return what we received and simple validation results
     result = {"raw_received": raw, "validation": {}}
 
     # Try strict schema
