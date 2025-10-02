@@ -1,306 +1,231 @@
-# ------------------------------
-# Nija Bot Live Deployment Version - Webhook Driven Trading
-# ------------------------------
-
 import os
 import time
-import threading
-from datetime import datetime, timezone
-from coinbase.wallet.client import Client
-from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
-import uvicorn
+import requests
 
-# ------------------------------
-# Load environment variables
-# ------------------------------
-load_dotenv()
+# Optional: enable dry run to prevent real trades
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("1", "true", "yes")
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")  # set this in your .env and TradingView webhook body/header
+# Public price fallback
+COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/{symbol}-USD/spot"
 
-if not API_KEY or not API_SECRET:
-    raise ValueError("API_KEY or API_SECRET not found. Please set them in your .env file.")
-if not WEBHOOK_SECRET:
-    print("⚠️ WEBHOOK_SECRET not set. Incoming webhooks will be rejected unless you set this in .env.")
-
-# ------------------------------
-# Initialize Coinbase client
-# ------------------------------
-client = Client(API_KEY, API_SECRET)
-print("✅ Coinbase client initialized successfully!")
-
-# ------------------------------
-# Minimum trade amounts per ticker (USD equivalents)
-# ------------------------------
-coinbase_min = {
-    "BTC-USD": 10,
-    "ETH-USD": 1,
-    "LTC-USD": 1,
-    "SOL-USD": 1,
-    "DOGE-USD": 1,
-    "XRP-USD": 1,
-}
-
-priority_order = ["BTC-USD", "ETH-USD", "LTC-USD", "SOL-USD", "DOGE-USD", "XRP-USD"]
-
-# ------------------------------
-# In-memory signal store (thread-safe)
-# ------------------------------
-signals_lock = threading.Lock()
-# signals structure: { "BTC-USD": {"action":"buy", "ts": 169xxx, "meta": {...}} }
-signals = {}
-
-# How long a signal stays valid (seconds) before ignored
-SIGNAL_TTL = 60 * 10  # 10 minutes (tweak as needed)
-
-# ------------------------------
-# Balance & allocation helpers (same as before)
-# ------------------------------
-def allocate_dynamic(balance_fetcher, min_trade, priority):
-    total_balance = balance_fetcher()
-    allocations = {asset: 0 for asset in min_trade.keys()}
-    
-    for asset in priority:
-        if total_balance >= min_trade[asset]:
-            allocations[asset] = min_trade[asset]
-            total_balance -= min_trade[asset]
-
-    funded = [a for a, amt in allocations.items() if amt >= min_trade[a]]
-    if funded and total_balance > 0:
-        per_asset_extra = total_balance / len(funded)
-        for a in funded:
-            allocations[a] += per_asset_extra
-
-    for a in allocations:
-        if 0 < allocations[a] < min_trade[a]:
-            allocations[a] = 0
-
-    return allocations
-
-def get_current_balance():
+# -------------------------
+# Helper: robust account lookup
+# -------------------------
+def _try_float(x):
     try:
-        account = client.get_account("USD")
-        return float(account.balance.amount)
+        return float(x)
+    except Exception:
+        return None
+
+def robust_get_account_balance(client, currency_code):
+    """
+    Try multiple ways to get the balance for a currency.
+    currency_code: "USD", "BTC", "ETH", etc.
+    Returns dict: {"amount": float, "currency": "USD"} or None on failure.
+    """
+    # 1) If using coinbase_advanced_py (older flows) it might have get_account_balance()
+    try:
+        if hasattr(client, "get_account_balance"):
+            # some clients expect "USD" or "BTC"
+            val = client.get_account_balance(currency_code)
+            amt = _try_float(val)
+            if amt is not None:
+                return {"amount": amt, "currency": currency_code}
+    except Exception as e:
+        print(f"[robust_get] client.get_account_balance({currency_code}) failed: {e}")
+
+    # 2) Try client.get_account(currency_code) — some SDKs accept currency param (but often expect an id)
+    try:
+        if hasattr(client, "get_account"):
+            acct = client.get_account(currency_code)
+            # acct might be an object with .balance.amount or .balance or a dict
+            # handle many shapes
+            if acct is None:
+                raise ValueError("get_account returned None")
+            # try attribute access
+            try:
+                bal = getattr(acct, "balance", None)
+                if bal is not None:
+                    # balance may be an object with .amount or a simple string
+                    amt = None
+                    if hasattr(bal, "amount"):
+                        amt = _try_float(bal.amount)
+                    else:
+                        amt = _try_float(bal)
+                    if amt is not None:
+                        # currency maybe at acct.currency or bal.currency
+                        cur = getattr(acct, "currency", None) or getattr(bal, "currency", None) or currency_code
+                        return {"amount": amt, "currency": cur}
+            except Exception:
+                pass
+            # try dict-like access
+            try:
+                # some SDKs return dicts
+                if isinstance(acct, dict):
+                    bal = acct.get("balance") or acct.get("available") or acct.get("amount")
+                    if isinstance(bal, dict) and "amount" in bal:
+                        amt = _try_float(bal["amount"])
+                    else:
+                        amt = _try_float(bal)
+                    cur = acct.get("currency") or currency_code
+                    if amt is not None:
+                        return {"amount": amt, "currency": cur}
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[robust_get] client.get_account({currency_code}) failed: {e}")
+
+    # 3) Try iterating over list of accounts (common pattern)
+    try:
+        if hasattr(client, "get_accounts"):
+            all_accts = client.get_accounts()
+            # all_accts may be list-like or an iterator
+            try:
+                for acct in all_accts:
+                    # normalize dict/object
+                    cur = None
+                    bal_amt = None
+                    if isinstance(acct, dict):
+                        cur = acct.get("currency") or acct.get("balance", {}).get("currency")
+                        bal = acct.get("balance") or acct.get("available") or {}
+                        if isinstance(bal, dict):
+                            bal_amt = _try_float(bal.get("amount") or bal.get("value"))
+                        else:
+                            bal_amt = _try_float(bal)
+                    else:
+                        # object with attributes
+                        cur = getattr(acct, "currency", None)
+                        bal = getattr(acct, "balance", None)
+                        if bal is not None:
+                            if hasattr(bal, "amount"):
+                                bal_amt = _try_float(bal.amount)
+                            else:
+                                bal_amt = _try_float(bal)
+                    if cur and cur.upper() == currency_code.upper():
+                        if bal_amt is not None:
+                            return {"amount": bal_amt, "currency": cur}
+            except Exception as e:
+                # sometimes get_accounts returns a paginated object; print debug
+                print(f"[robust_get] iterating get_accounts failed: {e}")
+    except Exception as e:
+        print(f"[robust_get] client.get_accounts() failed: {e}")
+
+    # 4) Nothing worked
+    print(f"[robust_get] Failed to fetch account for {currency_code} via available client methods.")
+    return None
+
+# -------------------------
+# Replace get_current_balance and get_coin_balance with robust versions
+# -------------------------
+def get_current_balance():
+    """
+    Returns USD float balance or None on failure.
+    """
+    try:
+        res = robust_get_account_balance(client, "USD")
+        if res and res.get("amount") is not None:
+            return res["amount"]
+        # If API returned 0 or None, print helpful debug
+        print("Error fetching USD balance: No usable USD account returned.")
+        return None
     except Exception as e:
         print(f"Error fetching USD balance: {e}")
-        return 0
+        return None
 
-# ------------------------------
-# Coinbase balance + price helpers
-# ------------------------------
 def get_coin_balance(coin):
     """
-    coin is like 'BTC' or 'ETH' — uses client.get_account with currency code.
-    Note: coinbase.wallet.Client.get_account expects account id or currency?
-    If your client requires a different call, adapt accordingly.
+    coin: 'BTC', 'ETH', ...
+    Returns token amount (float) or None on failure.
     """
     try:
-        acct = client.get_account(coin)
-        return float(acct.balance.amount)
-    except Exception:
+        res = robust_get_account_balance(client, coin)
+        if res and res.get("amount") is not None:
+            return res["amount"]
+        print(f"[get_coin_balance] No usable account for {coin}")
+        return None
+    except Exception as e:
+        print(f"[get_coin_balance] Error: {e}")
         return None
 
-def get_usd_value(coin, bal):
+# -------------------------
+# Robust USD value (price) lookup with SDK then public fallback
+# -------------------------
+def get_usd_value(coin, token_amount):
     """
-    Use client.get_spot_price to get price; returns USD value or None.
+    Returns USD equivalent or None.
     """
+    # 1) Try SDK spot price if available
     try:
-        spot = client.get_spot_price(currency_pair=f"{coin}-USD")
-        price = float(spot.amount)
-        return bal * price
+        if hasattr(client, "get_spot_price"):
+            try:
+                spot = client.get_spot_price(currency_pair=f"{coin}-USD")
+                # spot might be object with .amount or dict
+                if spot is None:
+                    raise ValueError("spot returned None")
+                price = None
+                if hasattr(spot, "amount"):
+                    price = _try_float(spot.amount)
+                elif isinstance(spot, dict):
+                    price = _try_float(spot.get("amount") or (spot.get("data") or {}).get("amount"))
+                else:
+                    # maybe string
+                    price = _try_float(spot)
+                if price is not None:
+                    return token_amount * price
+            except Exception as e:
+                print(f"[price/sdk] get_spot_price failed for {coin}: {e}")
     except Exception:
-        return None
+        pass
 
-# ------------------------------
-# Dashboard printer
-# ------------------------------
-def print_balances_dashboard():
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    print("\033c", end="")  # clear terminal (best-effort)
-    print(f"NIJA BOT — Balance Dashboard — {timestamp}")
-    print("-" * 80)
+    # 2) Fallback to public Coinbase API
+    try:
+        url = COINBASE_SPOT_URL.format(symbol=coin)
+        r = requests.get(url, timeout=6)
+        r.raise_for_status()
+        j = r.json()
+        amt = j.get("data", {}).get("amount")
+        price = _try_float(amt)
+        if price is not None:
+            return token_amount * price
+        else:
+            print(f"[price/http] Coinbase public API returned bad payload for {coin}: {j}")
+    except Exception as e:
+        print(f"[price/http] Failed to fetch spot price for {coin}: {e}")
 
-    usd = get_current_balance()
-    print(f"{'USD':6} | ${usd:,.2f} | Signals queued: {len(signals)}")
-    print("-" * 80)
+    # All attempts failed
+    return None
 
-    eligible_count = 0
-    for coin in ["BTC", "ETH", "LTC", "SOL", "DOGE", "XRP"]:
-        bal = get_coin_balance(coin)
-        if bal is None:
-            print(f"{coin:6} | API ERROR")
-            continue
-        usd_val = get_usd_value(coin, bal)
-        if usd_val is None:
-            print(f"{coin:6} | {bal:.6f} | USD Val: API ERROR")
-            continue
-        meets = "YES ✅" if usd_val >= coinbase_min[f"{coin}-USD"] else "NO ⏭"
-        if usd_val >= coinbase_min[f"{coin}-USD"]:
-            eligible_count += 1
-        print(f"{coin:6} | {bal:.6f} | ${usd_val:,.2f} | Eligible: {meets}")
-
-    print("-" * 80)
-    print(f"Eligible for trading: {eligible_count}/{len(coinbase_min)}")
-    print("\n")
-
-# ------------------------------
-# Trade execution
-# ------------------------------
+# -------------------------
+# Safe execute_trade with dry-run
+# -------------------------
 def execute_trade(asset, side="buy"):
     """
-    asset format: 'BTC-USD' etc. Uses dynamic allocation to determine trade size.
+    Use DRY_RUN env flag to prevent real orders while debugging.
+    asset example: 'BTC-USD'
     """
-    dynamic_allocations = allocate_dynamic(get_current_balance, coinbase_min, priority_order)
+    # Determine trade amount using your allocate_dynamic function
+    dynamic_allocations = allocate_dynamic(lambda: get_current_balance() or 0, coinbase_min, priority_order)
     trade_amount = dynamic_allocations.get(asset, 0)
-    
+
     if trade_amount <= 0:
-        print(f"Skipped {asset}: allocation below minimum.")
+        print(f"Skipped {asset}: allocation below minimum or zero ({trade_amount}).")
         return False
 
+    # Dry run only logs what would be done
+    if DRY_RUN:
+        print(f"[DRY RUN] Would place {side} market order for {asset} amount ${trade_amount:.2f}")
+        return True
+
+    # Real trade path (original)
     try:
-        # Coinbase wallet Client.place_order may differ; adapt arguments to your library version.
         order = client.place_order(
             product_id=asset,
             side=side,
             order_type="market",
-            size=str(trade_amount)  # some SDKs expect string amounts
+            size=str(trade_amount)
         )
         print(f"✅ Placed {side} order for {asset} with amount ${trade_amount}")
         return True
     except Exception as e:
         print(f"❌ Error placing order for {asset}: {e}")
         return False
-
-# ------------------------------
-# FastAPI webhook endpoint
-# ------------------------------
-app = FastAPI()
-
-def verify_webhook_secret(provided_secret: str):
-    if not WEBHOOK_SECRET:
-        # If you don't set WEBHOOK_SECRET, reject for safety
-        return False
-    return provided_secret == WEBHOOK_SECRET
-
-@app.post("/webhook")
-async def webhook(request: Request):
-    """
-    Expected JSON examples:
-    1) Simple:
-       { "asset": "BTC-USD", "action": "buy", "secret": "mysecret" }
-    2) TradingView custom message:
-       { "ticker": "BTCUSD", "strategy": {"order_action":"buy"}, "secret":"..." }
-    This endpoint is intentionally permissive about field names.
-    """
-    payload = await request.json()
-    # Attempt to extract secret (try header first then payload)
-    provided_secret = request.headers.get("X-WEBHOOK-SECRET") or payload.get("secret") or payload.get("password")
-    if not verify_webhook_secret(provided_secret):
-        raise HTTPException(status_code=401, detail="Invalid webhook secret")
-
-    # normalize action and asset
-    action = None
-    asset = None
-
-    # Try common fields
-    if "action" in payload:
-        action = payload.get("action")
-    if "order" in payload:
-        action = payload.get("order")
-    # tradingview common: strategy.order.action or strategy.order.action
-    if payload.get("strategy") and isinstance(payload.get("strategy"), dict):
-        # adapt to common TradingView shapes
-        sv = payload["strategy"]
-        action = action or sv.get("order_action") or sv.get("order_action_lower") or sv.get("order")
-    
-    # asset/ticker extraction
-    asset = payload.get("asset") or payload.get("ticker") or payload.get("symbol")
-    # Normalize ticker like BTCUSD -> BTC-USD
-    if asset and isinstance(asset, str):
-        asset = asset.upper().replace("USD", "-USD").replace("_", "-").replace("/", "-")
-        # quick mapping if user sent BTCUSD or BTC/USD
-        if asset.endswith("-USD") is False and asset.endswith("USD"):
-            asset = asset.replace("USD", "-USD")
-
-    # Last attempt: maybe payload had a message string
-    if not action and "message" in payload and isinstance(payload["message"], str):
-        if "buy" in payload["message"].lower():
-            action = "buy"
-        elif "sell" in payload["message"].lower():
-            action = "sell"
-
-    if not asset or not action:
-        raise HTTPException(status_code=400, detail="Webhook JSON must include asset and action (buy/sell)")
-
-    action = action.lower()
-    if action not in ("buy", "sell"):
-        raise HTTPException(status_code=400, detail="action must be 'buy' or 'sell'")
-
-    # Store signal (thread-safe)
-    with signals_lock:
-        signals[asset] = {"action": action, "ts": time.time(), "payload": payload}
-
-    print(f"🔔 Received webhook: {asset} -> {action}")
-    return {"status": "accepted", "asset": asset, "action": action}
-
-# ------------------------------
-# Background: main trading loop (runs in separate thread)
-# ------------------------------
-def trading_loop():
-    assets_to_trade = list(coinbase_min.keys())
-
-    while True:
-        try:
-            # 1) show balances dashboard
-            print_balances_dashboard()
-
-            # 2) process each signal (copy to avoid holding lock during trades)
-            with signals_lock:
-                current_signals = dict(signals)
-
-            for asset, sig in current_signals.items():
-                # validate TTL
-                age = time.time() - sig["ts"]
-                if age > SIGNAL_TTL:
-                    # stale -> drop
-                    with signals_lock:
-                        signals.pop(asset, None)
-                    print(f"Signal for {asset} expired (age {age:.1f}s). Dropped.")
-                    continue
-
-                # Ensure asset is supported and formatted like 'BTC-USD'
-                if asset not in assets_to_trade:
-                    print(f"Unsupported asset in signal: {asset} — ignoring.")
-                    with signals_lock:
-                        signals.pop(asset, None)
-                    continue
-
-                # Execute the trade
-                success = execute_trade(asset, side=sig["action"])
-                # After executing once, remove the signal to avoid duplicate trades.
-                with signals_lock:
-                    signals.pop(asset, None)
-
-                # Optionally: if trade failed, you could requeue or alert
-                time.sleep(1)  # small pause between trades
-
-        except Exception as e:
-            print(f"Trading loop error: {e}")
-
-        # Sleep until next cycle
-        print("Waiting 60 seconds for next trading cycle...")
-        time.sleep(60)
-
-# ------------------------------
-# Start server + trading loop
-# ------------------------------
-if __name__ == "__main__":
-    # Start trading loop in background thread
-    thread = threading.Thread(target=trading_loop, daemon=True)
-    thread.start()
-
-    # Start FastAPI server (listens for webhooks)
-    # In production, run uvicorn via command line with workers (uvicorn main:app --host 0.0.0.0 --port 8000)
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
