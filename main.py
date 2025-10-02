@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 # Load API keys
 # ------------------------------
 load_dotenv()
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+API_KEY = os.getenv(f0e7ae67-cf8a-4aee-b3cd-17227a1b8267)
+API_SECRET = os.getenv(nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49)
 
 if not API_KEY or not API_SECRET:
     raise ValueError("API_KEY or API_SECRET not found in .env file.")
