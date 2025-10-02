@@ -1,87 +1,65 @@
-import os
-import traceback
-from dotenv import load_dotenv
+# ---- webhook debug handler (paste into your main.py) ----
 from fastapi import FastAPI, Request
-import uvicorn
+from pydantic import BaseModel, ValidationError
+from typing import Literal, Optional
+import traceback
 
-load_dotenv()
-
-# --- Coinbase Client Setup ---
-client = None
-try:
-    from coinbase.wallet.client import Client
-    client = Client(os.getenv("API_KEY"), os.getenv("API_SECRET"))
-    print("Client initialized: coinbase.wallet.Client")
-except Exception as e:
-    print("coinbase.wallet.Client import failed, trying advanced client...")
-    try:
-        import coinbase_advanced_py as cbadv
-        client = cbadv.Client(api_key=os.getenv("API_KEY"), api_secret=os.getenv("API_SECRET"))
-        print("Client initialized: coinbase_advanced_py.Client")
-    except Exception as e:
-        print("Failed to initialize any Coinbase client:", e)
-        traceback.print_exc()
-
-# --- Account Fetching ---
-def fetch_usd_balance():
-    if not client:
-        print("Client not initialized, returning USD balance = 0")
-        return 0
-    try:
-        if hasattr(client, 'get_accounts'):
-            accounts = client.get_accounts()
-            for acc in accounts['data']:
-                if acc['currency'] == 'USD':
-                    return float(acc['balance']['amount'])
-        else:
-            accounts = client.get_accounts()
-            for acc in accounts:
-                if acc['currency'] == 'USD':
-                    return float(acc['balance'])
-    except Exception as e:
-        print("Error fetching USD balance:", e)
-        traceback.print_exc()
-    return 0
-
-# --- FastAPI Setup ---
 app = FastAPI()
-minimum_allocation = 10  # USD
+
+class Order(BaseModel):
+    symbol: str                   # "BTC-USD"
+    side: Literal["buy", "sell"]
+    order_type: Literal["market", "limit"]
+    amount: float                 # amount in asset units
+
+# legacy / alternate schema (TradingView style)
+class LegacyAlert(BaseModel):
+    pair: str
+    allocation_percent: Optional[float] = None
+    price: Optional[float] = None
+    time: Optional[str] = None
+    strategy: Optional[str] = None  # "buy"/"sell"
 
 @app.post("/webhook")
-async def webhook_listener(req: Request):
+async def webhook(req: Request):
     try:
-        data = await req.json()
-        print("Webhook received:", data)
-
-        pair = data.get("pair")
-        allocation_percent = data.get("allocation_percent", 10)  # Default 10%
-        action = data.get("strategy", "").lower()  # "buy" or "sell"
-
-        if action not in ["buy", "sell"]:
-            return {"status": "skipped", "reason": "Invalid action"}
-
-        usd_balance = fetch_usd_balance()
-        allocation = usd_balance * (allocation_percent / 100)
-
-        if allocation < minimum_allocation:
-            return {"status": "skipped", "reason": f"Allocation below minimum for {pair}"}
-
-        # --- Place trade logic ---
-        print(f"{action.upper()} trade for {pair} with allocation ${allocation:.2f}")
-
-        # Example: replace with your actual trade placement code
-        # if action == "buy":
-        #     client.place_order(pair, allocation, order_type="market", side="buy")
-        # elif action == "sell":
-        #     client.place_order(pair, allocation, order_type="market", side="sell")
-
-        return {"status": "success", "pair": pair, "action": action, "allocation": allocation}
-
+        raw = await req.json()
     except Exception as e:
-        print("Error handling webhook:", e)
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "reason": "invalid_json", "detail": str(e)}
 
-# --- Run Server ---
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    # Always log raw payload for debugging
+    print("RAW WEBHOOK PAYLOAD:", raw)
+
+    # 1) Try strict Order model (symbol/side/order_type/amount)
+    try:
+        order = Order.parse_obj(raw)
+        print("✅ Valid Order schema received:", order.dict())
+        # place your real order logic here, or simulate:
+        # place_order(order.symbol, order.side, order.order_type, order.amount)
+        return {"status": "accepted", "schema": "order", "order": order.dict()}
+    except ValidationError as e:
+        print("Order schema validation failed:", e.errors())
+
+    # 2) Try legacy schema and convert it to Order-like response
+    try:
+        legacy = LegacyAlert.parse_obj(raw)
+        print("Legacy alert received:", legacy.dict())
+        # If legacy has allocation_percent, convert using a placeholder balance calc or return as-is.
+        # Example response includes how we'd interpret it (you can adapt to your real logic).
+        converted = {
+            "pair": legacy.pair,
+            "strategy": legacy.strategy,
+            "allocation_percent": legacy.allocation_percent,
+            "price": legacy.price,
+            "note": "Legacy schema received. Convert allocation_percent -> amount in your bot using current USD balance."
+        }
+        return {"status": "accepted", "schema": "legacy", "converted": converted}
+    except ValidationError as e:
+        print("Legacy schema validation failed:", e.errors())
+
+    # 3) If we get here: unknown/invalid schema — return a detailed error so the caller can fix it
+    return {
+        "status": "invalid_order_data",
+        "reason": "payload did not match either strict Order schema or LegacyAlert schema",
+        "received": raw
+    }
