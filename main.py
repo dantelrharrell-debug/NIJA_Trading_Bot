@@ -1,57 +1,131 @@
-# Echo debug handler — paste into main.py and redeploy
 from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from typing import Literal, Optional
-import json
+import uvicorn
+import coinbase_advanced_py as cb
+import os
+import time
 
+# ======================
+# CONFIG
+# ======================
+api_key = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
+api_secret = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
+SANDBOX = False  # True=test, False=live
+DEFAULT_TRADE_AMOUNT = 10  # USD per trade
+MAX_TRADE_AMOUNT = 100  # Max trade cap
+MIN_USD_BALANCE = 5  # Don't trade below this balance
+TRADE_HISTORY_LIMIT = 20  # Keep last 20 trades for learning
+
+# ======================
+# CONNECT TO COINBASE
+# ======================
+try:
+    client = cb.CoinbaseAdvanced(api_key=api_key, api_secret=api_secret, sandbox=SANDBOX)
+    print("✅ Connected to Coinbase Advanced")
+except Exception as e:
+    print("❌ Failed to connect:", e)
+    exit(1)
+
+# ======================
+# FASTAPI SETUP
+# ======================
 app = FastAPI()
 
-class Order(BaseModel):
-    symbol: str
-    side: Literal["buy", "sell"]
-    order_type: Literal["market", "limit"]
-    amount: float
+# ======================
+# TRADE HISTORY
+# ======================
+trade_history = []
 
-class LegacyAlert(BaseModel):
-    pair: str
-    allocation_percent: Optional[float] = None
-    price: Optional[float] = None
-    time: Optional[str] = None
-    strategy: Optional[str] = None
+# ======================
+# HELPERS
+# ======================
+def get_usd_balance():
+    try:
+        accounts = client.get_accounts()
+        for acc in accounts:
+            if acc['currency'] == "USD":
+                return float(acc['balance'])
+    except Exception as e:
+        print("❌ Error fetching USD balance:", e)
+    return 0.0
 
+def get_price(symbol):
+    try:
+        ticker = client.get_product_ticker(symbol)
+        return float(ticker['price'])
+    except Exception as e:
+        print(f"❌ Error fetching price for {symbol}:", e)
+        return 0.0
+
+def place_order(symbol, side, amount_usd):
+    if amount_usd > MAX_TRADE_AMOUNT:
+        print(f"⚠ Trade amount ${amount_usd} exceeds max. Capped to {MAX_TRADE_AMOUNT}")
+        amount_usd = MAX_TRADE_AMOUNT
+
+    usd_balance = get_usd_balance()
+    if usd_balance < MIN_USD_BALANCE:
+        print(f"⚠ USD balance too low (${usd_balance}). Trade skipped")
+        return None
+
+    print(f"📌 Placing {side.upper()} for ${amount_usd} of {symbol}")
+    try:
+        order = client.place_order(
+            product_id=symbol,
+            side=side,
+            order_type="market",
+            funds=str(amount_usd)
+        )
+        print(f"✅ Order successful: {order}")
+        return order
+    except Exception as e:
+        print(f"❌ Order failed: {e}")
+        return None
+
+def adjust_trade_amount(default_amount):
+    if len(trade_history) < 3:
+        return default_amount
+    recent = trade_history[-3:]
+    wins = sum(1 for t in recent if t.get("result", 0) > 0)
+    if wins >= 2:
+        return min(default_amount * 1.1, MAX_TRADE_AMOUNT)
+    else:
+        return max(default_amount * 0.9, 1)
+
+# ======================
+# WEBHOOK ENDPOINT
+# ======================
 @app.post("/webhook")
-async def webhook(req: Request):
-    # read body
-    try:
-        raw = await req.json()
-    except Exception as e:
-        # If body is plain text or stringified JSON, return the raw text too
-        text = await req.body()
-        return {"status": "invalid_json", "error": str(e), "raw_text": text.decode(errors="replace")}
+async def webhook(request: Request):
+    data = await request.json()
+    print("⚡ Webhook received:", data)
 
-    # Try to parse nested stringified JSON automatically (common case)
-    if isinstance(raw, str):
-        try:
-            raw_parsed = json.loads(raw)
-            raw = raw_parsed
-        except Exception:
-            pass
+    action = data.get("action")
+    symbol = data.get("symbol", "BTC-USD")
+    amount = float(data.get("amount", DEFAULT_TRADE_AMOUNT))
 
-    # Return what we received and simple validation results
-    result = {"raw_received": raw, "validation": {}}
+    # Adaptive trade sizing
+    amount = adjust_trade_amount(amount)
 
-    # Try strict schema
-    try:
-        order = Order.parse_obj(raw)
-        result["validation"]["order"] = {"ok": True, "order": order.dict()}
-    except Exception as e:
-        result["validation"]["order"] = {"ok": False, "error": str(e)}
+    if action.lower() not in ["buy", "sell"]:
+        return {"status": "error", "message": "Invalid action"}
 
-    # Try legacy schema
-    try:
-        legacy = LegacyAlert.parse_obj(raw)
-        result["validation"]["legacy"] = {"ok": True, "legacy": legacy.dict()}
-    except Exception as e:
-        result["validation"]["legacy"] = {"ok": False, "error": str(e)}
+    order = place_order(symbol, action.lower(), amount)
+    if order:
+        trade_history.append({
+            "symbol": symbol,
+            "action": action.lower(),
+            "amount": amount,
+            "result": 0,  # placeholder for PnL
+            "price": get_price(symbol)
+        })
+        if len(trade_history) > TRADE_HISTORY_LIMIT:
+            trade_history.pop(0)  # keep history limited
+        return {"status": "success", "message": f"{action.upper()} order placed for {symbol}"}
+    else:
+        return {"status": "error", "message": "Order failed"}
 
-    return result
+# ======================
+# RUN BOT
+# ======================
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
