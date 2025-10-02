@@ -1,6 +1,9 @@
 import os
 import traceback
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+import uvicorn
+
 load_dotenv()
 
 # --- Coinbase Client Setup ---
@@ -10,7 +13,7 @@ try:
     client = Client(os.getenv("API_KEY"), os.getenv("API_SECRET"))
     print("Client initialized: coinbase.wallet.Client")
 except Exception as e:
-    print("Coinbase.wallet.Client import failed, trying advanced client...")
+    print("coinbase.wallet.Client import failed, trying advanced client...")
     try:
         import coinbase_advanced_py as cbadv
         client = cbadv.Client(api_key=os.getenv("API_KEY"), api_secret=os.getenv("API_SECRET"))
@@ -25,14 +28,13 @@ def fetch_usd_balance():
         print("Client not initialized, returning USD balance = 0")
         return 0
     try:
-        # Coinbase Wallet vs Advanced API differences
-        if hasattr(client, 'get_accounts'):  # coinbase.wallet.Client
+        if hasattr(client, 'get_accounts'):
             accounts = client.get_accounts()
             for acc in accounts['data']:
                 if acc['currency'] == 'USD':
                     return float(acc['balance']['amount'])
-        else:  # coinbase_advanced_py
-            accounts = client.get_accounts()  # adjust if needed
+        else:
+            accounts = client.get_accounts()
             for acc in accounts:
                 if acc['currency'] == 'USD':
                     return float(acc['balance'])
@@ -41,26 +43,45 @@ def fetch_usd_balance():
         traceback.print_exc()
     return 0
 
-usd_balance = fetch_usd_balance()
-print("USD balance:", usd_balance)
+# --- FastAPI Setup ---
+app = FastAPI()
+minimum_allocation = 10  # USD
 
-# --- Trading Logic Example ---
-trading_pairs = ["BTCUSD", "ETHUSD", "LTCUSD", "SOLUSD"]
-minimum_allocation = 10  # minimum trade allocation in USD
-
-for pair in trading_pairs:
+@app.post("/webhook")
+async def webhook_listener(req: Request):
     try:
-        allocation = usd_balance * 0.1  # Example: 10% per trade
-        if allocation < minimum_allocation:
-            print(f"Skipped {pair}: allocation below minimum.")
-            continue
+        data = await req.json()
+        print("Webhook received:", data)
 
-        # --- Place trade logic here ---
-        print(f"Placing trade for {pair} with allocation ${allocation:.2f}")
-        # Example: client.place_order(pair, allocation, order_type="market")
+        pair = data.get("pair")
+        allocation_percent = data.get("allocation_percent", 10)  # Default 10%
+        action = data.get("strategy", "").lower()  # "buy" or "sell"
+
+        if action not in ["buy", "sell"]:
+            return {"status": "skipped", "reason": "Invalid action"}
+
+        usd_balance = fetch_usd_balance()
+        allocation = usd_balance * (allocation_percent / 100)
+
+        if allocation < minimum_allocation:
+            return {"status": "skipped", "reason": f"Allocation below minimum for {pair}"}
+
+        # --- Place trade logic ---
+        print(f"{action.upper()} trade for {pair} with allocation ${allocation:.2f}")
+
+        # Example: replace with your actual trade placement code
+        # if action == "buy":
+        #     client.place_order(pair, allocation, order_type="market", side="buy")
+        # elif action == "sell":
+        #     client.place_order(pair, allocation, order_type="market", side="sell")
+
+        return {"status": "success", "pair": pair, "action": action, "allocation": allocation}
 
     except Exception as e:
-        print(f"Error processing {pair} trade:", e)
+        print("Error handling webhook:", e)
         traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
-print("Trading cycle complete.")
+# --- Run Server ---
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
