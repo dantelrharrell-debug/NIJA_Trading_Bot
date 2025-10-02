@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 import uvicorn
-import coinbase_advanced_py as cb
+import coinbase_advanced as cb  # FIXED import
 import os
 import time
 import numpy as np
@@ -112,7 +112,6 @@ def compute_correlation_matrix():
     return np.corrcoef(data)
 
 def predictive_signal(symbol):
-    """Compute predictive confidence (0-1) using moving averages & momentum + historical learning"""
     prices = list(price_history[symbol])
     if len(prices) < 2:
         return 0.5
@@ -122,7 +121,6 @@ def predictive_signal(symbol):
     base_confidence = 0.5 + 0.3 * np.sign(short_ma - long_ma) + 0.2 * np.sign(momentum)
     base_confidence = max(0, min(1, base_confidence))
 
-    # adjust confidence using past learning
     symbol_data = learning_data.get(symbol, {})
     signal_type = f"MA_{int(short_ma*100)}"
     if signal_type in symbol_data and symbol_data[signal_type]["trades"] > 0:
@@ -132,7 +130,6 @@ def predictive_signal(symbol):
     return base_confidence
 
 def update_learning(symbol, pnl):
-    """Update learning after trade to improve future confidence scoring"""
     symbol_data = learning_data.setdefault(symbol, {})
     signal_type = f"MA_{int(np.mean(list(price_history[symbol])[-5:])*100)}"
     signal_record = symbol_data.setdefault(signal_type, {"wins": 0, "trades": 0})
@@ -198,7 +195,7 @@ def calculate_pnl(symbol, action, amount_usd, price, hedge=False):
         bought_price = position["price"]
         pnl = (price - bought_price) / bought_price * bought_usd
         session_pnl += pnl
-        update_learning(symbol, pnl)  # AI learns from outcome
+        update_learning(symbol, pnl)
         return pnl
     return 0.0
 
