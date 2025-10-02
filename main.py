@@ -1,5 +1,5 @@
 # ------------------------------
-# Nija Trading Bot - Deploy Ready
+# Nija Bot Live Deployment Version - Corrected .env Handling
 # ------------------------------
 
 import os
@@ -8,20 +8,24 @@ from coinbase.wallet.client import Client
 from dotenv import load_dotenv
 
 # ------------------------------
-# Load API keys
+# 1️⃣ Load environment variables
 # ------------------------------
 load_dotenv()
-API_KEY = os.getenv(f0e7ae67-cf8a-4aee-b3cd-17227a1b8267)
-API_SECRET = os.getenv(nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49)
+
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
 
 if not API_KEY or not API_SECRET:
-    raise ValueError("API_KEY or API_SECRET not found in .env file.")
+    raise ValueError("API_KEY or API_SECRET not found. Please set them in your .env file.")
 
+# ------------------------------
+# 2️⃣ Initialize Coinbase client
+# ------------------------------
 client = Client(API_KEY, API_SECRET)
 print("✅ Coinbase client initialized successfully!")
 
 # ------------------------------
-# Minimum trade amounts & priority order
+# 3️⃣ Minimum trade amounts per ticker
 # ------------------------------
 coinbase_min = {
     "BTCUSD": 10,
@@ -30,26 +34,29 @@ coinbase_min = {
     "SOLUSD": 1,
     "DOGEUSD": 1,
     "XRPUSD": 1,
-    "BTCFUT": 10,    # Example Futures minimum
-    "ETHFUT": 10
+    "BTCFUT": 10,    # Example BTC Futures minimum
+    "ETHFUT": 10     # Example ETH Futures minimum
 }
 
+# Priority order: Futures first, then BTC, then altcoins
 priority_order = ["BTCFUT", "ETHFUT", "BTCUSD", "ETHUSD", "LTCUSD", "SOLUSD", "DOGEUSD", "XRPUSD"]
 
 # ------------------------------
-# Dynamic allocation function
+# 4️⃣ Dynamic allocation function
 # ------------------------------
 def allocate_dynamic(balance_fetcher, min_trade, priority):
     total_balance = balance_fetcher()
     allocations = {asset: 0 for asset in min_trade.keys()}
-
+    
     # Assign minimums to priority assets
     for asset in priority:
         if total_balance >= min_trade[asset]:
             allocations[asset] = min_trade[asset]
             total_balance -= min_trade[asset]
+        else:
+            allocations[asset] = 0
 
-    # Distribute leftover balance evenly
+    # Distribute leftover balance evenly among trading assets
     trading_assets = [a for a, amt in allocations.items() if amt >= min_trade[a]]
     if trading_assets and total_balance > 0:
         per_asset_extra = total_balance / len(trading_assets)
@@ -64,7 +71,7 @@ def allocate_dynamic(balance_fetcher, min_trade, priority):
     return allocations
 
 # ------------------------------
-# Get live USD balance
+# 5️⃣ Get current USD balance
 # ------------------------------
 def get_current_balance():
     try:
@@ -75,12 +82,12 @@ def get_current_balance():
         return 0
 
 # ------------------------------
-# Execute a trade
+# 6️⃣ Trade execution function
 # ------------------------------
 def execute_trade(asset, side="buy"):
     dynamic_allocations = allocate_dynamic(get_current_balance, coinbase_min, priority_order)
     trade_amount = dynamic_allocations.get(asset, 0)
-
+    
     if trade_amount <= 0:
         print(f"Skipped {asset}: allocation below minimum.")
         return
@@ -97,12 +104,13 @@ def execute_trade(asset, side="buy"):
         print(f"❌ Error placing order for {asset}: {e}")
 
 # ------------------------------
-# Example Trading Loop (replace with TradingView signals)
+# 7️⃣ Example Trading Loop / Signal Handling
 # ------------------------------
-assets_to_trade = ["BTCUSD", "ETHUSD", "LTCUSD", "SOLUSD", "DOGEUSD", "XRPUSD"]
+# Replace this loop with your TradingView webhook integration
+assets_to_trade = ["BTCUSD","ETHUSD","LTCUSD","SOLUSD","DOGEUSD","XRPUSD"]  # Example assets
 
 while True:
     for asset in assets_to_trade:
-        execute_trade(asset)
-    print("Waiting 60 seconds for next cycle...")
+        execute_trade(asset, side="buy")  # Replace with logic from TradingView signals
+    print("Waiting 60 seconds for next trading cycle...")
     time.sleep(60)
