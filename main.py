@@ -1,3 +1,47 @@
+# --- resilient import for Coinbase Advanced client ---
+import importlib, sys, traceback
+
+_coinbase_module = None
+_candidates = [
+    "coinbase_advanced_py",
+    "coinbase_advanced",
+    "coinbase_advanced_py.client",
+    "coinbase_advanced.client",
+    "coinbase_advanced_py.core",
+    "coinbase_advanced.core",
+]
+
+for name in _candidates:
+    try:
+        mod = importlib.import_module(name)
+        # check if module exposes a CoinbaseAdvanced class or Client factory
+        if hasattr(mod, "CoinbaseAdvanced") or hasattr(mod, "Client") or hasattr(mod, "CoinbaseAdvancedClient"):
+            _coinbase_module = mod
+            _import_name = name
+            break
+    except Exception:
+        continue
+
+if _coinbase_module is None:
+    # Last attempt: list installed packages for debug (will show in logs)
+    try:
+        import pkgutil
+        installed = sorted([m.name for m in pkgutil.iter_modules()])
+        print("DEBUG: installed top-level modules (first 200):", installed[:200])
+    except Exception:
+        pass
+    print("ERROR: Could not import any of the Coinbase Advanced modules. Tried:", _candidates)
+    print("Check that 'coinbase-advanced-py' is in requirements.txt and installed in Render.")
+    print("If you see this message in Render logs, run the following locally or in Replit to inspect:")
+    print("  python3 -m pip show coinbase-advanced-py || python3 -m pip show coinbase-advanced")
+    print("  python3 -c \"import importlib; print(importlib.util.find_spec('coinbase_advanced_py'))\"")
+    traceback.print_stack()
+    sys.exit(1)
+
+# normalize a simple API surface: set `cb_module` variable used below
+cb = _coinbase_module
+print(f"Imported Coinbase module from '{_import_name}' as cb")
+# --- end resilient import ---
 from fastapi import FastAPI, Request
 import uvicorn
 import coinbase_advanced_py as cb   # <-- correct import
