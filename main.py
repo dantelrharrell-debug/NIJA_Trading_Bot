@@ -1,5 +1,14 @@
 from fastapi import FastAPI
-import os
+import os, logging
+
+logger = logging.getLogger("nija")
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    cb = None
+    logger.exception("coinbase_advanced_py not installed. Make sure requirements.txt includes coinbase-advanced-py and redeploy.")
+    # optionally raise to fail fast in prod, or keep running but disable trading features:
+    # raise
 import time
 import threading
 import coinbase_advanced_py as cb
