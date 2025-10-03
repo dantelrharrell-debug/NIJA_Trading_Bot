@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from coinbase.wallet.client import Client
+import coinbase_advanced_py as cb
 from dotenv import load_dotenv
 import os
 import datetime
