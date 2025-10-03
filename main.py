@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 import uvicorn
-import coinbase_advanced as cb  # FIXED import
+coinbase-advanced-py
 import os
 import time
 import numpy as np
