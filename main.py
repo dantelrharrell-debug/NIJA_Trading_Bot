@@ -1,37 +1,29 @@
-# main.py
 import os
 import time
 import threading
 from fastapi import FastAPI
+from coinbase_advanced_py import Client
 from dotenv import load_dotenv
 
-# Try to import Coinbase client, install if missing
-try:
-    from coinbase_advanced_py import Client
-except ModuleNotFoundError:
-    import subprocess, sys
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "coinbase-advanced-py"])
-    from coinbase_advanced_py import Client
-
-# Load environment variables
+# Load API keys from .env
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
-# Initialize Coinbase client
+# Initialize Coinbase Advanced client
 try:
     client = Client(API_KEY, API_SECRET)
     print("Coinbase client initialized successfully.")
 except Exception as e:
     print("Error initializing Coinbase client:", e)
-    client = None
+    client = None  # Bot will run in diagnostic mode
 
 # FastAPI app
 app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"status": "Bot is running...", "coinbase_client": bool(client)}
+    return {"status": "Bot is running", "coinbase_client": bool(client)}
 
 @app.get("/balance")
 async def balance():
@@ -43,31 +35,28 @@ async def balance():
             return {"error": str(e)}
     return {"error": "Coinbase client not initialized."}
 
-# -------- Auto-Trading Loop --------
-def auto_trade():
+# -----------------------------
+# Basic Auto-Trading Loop
+# -----------------------------
+def trade_loop():
     if not client:
-        print("Coinbase client not initialized. Auto-trading disabled.")
+        print("Client not initialized. Skipping trading loop.")
         return
 
     while True:
         try:
+            # Example: Buy 0.001 BTC if USD balance > 10
             usd_balance = client.get_usd_balance()
-            print(f"USD Balance: {usd_balance}")
+            print("USD Balance:", usd_balance)
 
-            if usd_balance > 10:
-                test_order = client.place_order(
-                    symbol="BTC-USD",
-                    side="buy",
-                    type="market",
-                    funds="5"
-                )
-                print("Placed test order:", test_order)
+            if usd_balance >= 10:
+                print("Placing a test BTC buy for $10")
+                client.place_market_order(symbol="BTC-USD", side="buy", usd_amount=10)
 
-            time.sleep(60)
+            time.sleep(60)  # wait 1 minute before next check
         except Exception as e:
-            print("Error in trading loop:", e)
+            print("Error in trade loop:", e)
             time.sleep(60)
 
-# Start auto-trading in a background thread
-if client:
-    threading.Thread(target=auto_trade, daemon=True).start()
+# Run trading loop in background thread
+threading.Thread(target=trade_loop, daemon=True).start()
