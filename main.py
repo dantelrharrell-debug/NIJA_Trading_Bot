@@ -1,3 +1,11 @@
+import logging
+logger = logging.getLogger("nija")
+
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    cb = None
+    logger.error("coinbase_advanced_py not installed — trading disabled")
 from fastapi import FastAPI
 import os, logging
 
