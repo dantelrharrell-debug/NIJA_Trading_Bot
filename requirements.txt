@@ -1,4 +1,4 @@
-coinbase-advanced-py==1.8.2
+coinbase_advanced_py==1.8.2
 fastapi==0.109.0
 uvicorn==0.25.0
 numpy==2.3.3
