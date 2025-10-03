@@ -1,8 +1,27 @@
-import sys
-print("Python executable:", sys.executable)
-print("Python version:", sys.version)resilient import for Coinbase Advanced client ---
-import importlib, sys, traceback
+# ======================
+# MAIN.PY — NIJA TRADING BOT
+# ======================
 
+import sys
+import importlib
+import traceback
+import os
+import time
+import numpy as np
+import json
+from collections import deque
+from fastapi import FastAPI, Request
+import uvicorn
+
+# ----------------------
+# PYTHON INFO
+# ----------------------
+print("Python executable:", sys.executable)
+print("Python version:", sys.version)  # resilient import for Coinbase Advanced client
+
+# ----------------------
+# RESILIENT IMPORT: COINBASE ADVANCED
+# ----------------------
 _coinbase_module = None
 _candidates = [
     "coinbase_advanced_py",
@@ -16,7 +35,6 @@ _candidates = [
 for name in _candidates:
     try:
         mod = importlib.import_module(name)
-        # check if module exposes a CoinbaseAdvanced class or Client factory
         if hasattr(mod, "CoinbaseAdvanced") or hasattr(mod, "Client") or hasattr(mod, "CoinbaseAdvancedClient"):
             _coinbase_module = mod
             _import_name = name
@@ -25,7 +43,6 @@ for name in _candidates:
         continue
 
 if _coinbase_module is None:
-    # Last attempt: list installed packages for debug (will show in logs)
     try:
         import pkgutil
         installed = sorted([m.name for m in pkgutil.iter_modules()])
@@ -33,29 +50,14 @@ if _coinbase_module is None:
     except Exception:
         pass
     print("ERROR: Could not import any of the Coinbase Advanced modules. Tried:", _candidates)
-    print("Check that 'coinbase-advanced-py' is in requirements.txt and installed in Render.")
-    print("If you see this message in Render logs, run the following locally or in Replit to inspect:")
-    print("  python3 -m pip show coinbase-advanced-py || python3 -m pip show coinbase-advanced")
-    print("  python3 -c \"import importlib; print(importlib.util.find_spec('coinbase_advanced_py'))\"")
-    traceback.print_stack()
     sys.exit(1)
 
-# normalize a simple API surface: set `cb_module` variable used below
 cb = _coinbase_module
 print(f"Imported Coinbase module from '{_import_name}' as cb")
-# --- end resilient import ---
-from fastapi import FastAPI, Request
-import uvicorn
-import coinbase_advanced_py as cb   # <-- correct import
-import os
-import time
-import numpy as np
-import json
-from collections import deque
-from coinbase_advanced_py import Client
-# ======================
+
+# ----------------------
 # CONFIG
-# ======================
+# ----------------------
 API_KEY = "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267"
 API_SECRET = "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49"
 SANDBOX = False  # True = test, False = live
@@ -72,43 +74,41 @@ FUTURES_AVAILABLE = True
 
 TRADE_COINS = ["BTC-USD", "ETH-USD", "LTC-USD", "SOL-USD"]
 
-LEARNING_FILE = "trade_learning.json"  # stores signal performance
+LEARNING_FILE = "trade_learning.json"
 
-# ======================
+# ----------------------
 # CONNECT TO COINBASE
-# ======================
+# ----------------------
 try:
     client = cb.CoinbaseAdvanced(api_key=API_KEY, api_secret=API_SECRET, sandbox=SANDBOX)
     print("✅ Connected to Coinbase Advanced")
 except Exception as e:
     print("❌ Failed to connect:", e)
-    exit(1)
+    sys.exit(1)
 
-# ======================
+# ----------------------
 # FASTAPI SETUP
-# ======================
+# ----------------------
 app = FastAPI()
 
-# ======================
+# ----------------------
 # TRACKING STRUCTURES
-# ======================
+# ----------------------
 trade_history = []
-open_positions = {}      # {coin: [positions]}
-hedge_positions = {}     # {coin: [hedges]}
+open_positions = {}
+hedge_positions = {}
 session_pnl = 0.0
-
 price_history = {coin: deque(maxlen=PRICE_HISTORY_LENGTH) for coin in TRADE_COINS}
 
-# Load learning data
 if os.path.exists(LEARNING_FILE):
     with open(LEARNING_FILE, "r") as f:
         learning_data = json.load(f)
 else:
-    learning_data = {}  # {symbol: {signal_type: {"wins": int, "trades": int}}}
+    learning_data = {}
 
-# ======================
+# ----------------------
 # HELPER FUNCTIONS
-# ======================
+# ----------------------
 def save_learning():
     with open(LEARNING_FILE, "w") as f:
         json.dump(learning_data, f, indent=2)
@@ -144,13 +144,12 @@ def get_price(symbol):
         print(f"❌ Error fetching price for {symbol}:", e)
         return 0.0
 
-# ======================
+# ----------------------
 # AI / PREDICTIVE FUNCTIONS
-# ======================
+# ----------------------
 def compute_correlation_matrix():
     data = []
-    coins = TRADE_COINS
-    for coin in coins:
+    for coin in TRADE_COINS:
         hist = list(price_history[coin])
         if len(hist) < 2:
             hist = [get_price(coin)] * 2
@@ -171,8 +170,7 @@ def predictive_signal(symbol):
     signal_type = f"MA_{int(short_ma*100)}"
     if signal_type in symbol_data and symbol_data[signal_type]["trades"] > 0:
         win_rate = symbol_data[signal_type]["wins"] / symbol_data[signal_type]["trades"]
-        adjusted_conf = 0.5 * base_confidence + 0.5 * win_rate
-        return adjusted_conf
+        return 0.5 * base_confidence + 0.5 * win_rate
     return base_confidence
 
 def update_learning(symbol, pnl):
@@ -217,12 +215,11 @@ def adjust_trade_amount(default_amount, confidence):
         recent = trade_history[-3:]
         wins = sum(1 for t in recent if t["pnl"] > 0)
         streak_factor = 1.2 if wins >= 2 else 0.8
-    amount = default_amount * streak_factor * confidence
-    return max(1, min(amount, MAX_TRADE_AMOUNT))
+    return max(1, min(default_amount * streak_factor * confidence, MAX_TRADE_AMOUNT))
 
-# ======================
+# ----------------------
 # ORDER FUNCTIONS
-# ======================
+# ----------------------
 def calculate_pnl(symbol, action, amount_usd, price, hedge=False):
     global session_pnl
     positions = hedge_positions if hedge else open_positions
@@ -237,9 +234,7 @@ def calculate_pnl(symbol, action, amount_usd, price, hedge=False):
         if crypto not in positions or len(positions[crypto]) == 0:
             return 0.0
         position = positions[crypto].pop(0)
-        bought_usd = position["amount_usd"]
-        bought_price = position["price"]
-        pnl = (price - bought_price) / bought_price * bought_usd
+        pnl = (price - position["price"]) / position["price"] * position["amount_usd"]
         session_pnl += pnl
         update_learning(symbol, pnl)
         return pnl
@@ -295,9 +290,9 @@ def hedge_trade(symbol, amount_usd, main_action):
     print(f"⚡ Opening AI hedge for {hedge_coin}")
     return place_order(hedge_coin, hedge_side, amount_usd, hedge=True)
 
-# ======================
+# ----------------------
 # WEBHOOK ENDPOINT
-# ======================
+# ----------------------
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
@@ -327,9 +322,7 @@ async def webhook(request: Request):
         "confidence": confidence
     }
 
-# ======================
+# ----------------------
 # RUN BOT
-# ======================
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# ----------------------
+if __name__ == "__
