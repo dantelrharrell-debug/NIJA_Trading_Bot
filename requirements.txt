@@ -1,15 +1,15 @@
+# Overwrite requirements.txt with clean contents
+cat > requirements.txt <<'REQ'
 fastapi==0.109.0
 uvicorn==0.25.0
-coinbase_advanced_py==1.8.2
+coinbase-advanced-py==1.8.2
+python-dotenv==1.1.1
 numpy==2.3.3
 pandas==2.3.3
 scikit-learn==1.7.2
-python-dotenv==1.1.1
 requests==2.32.5
-# activate your local venv first if you use one, then:
-# verify import works locally:
-python -c "import coinbase_advanced_py; print('ok', getattr(coinbase_advanced_py,'__version__', 'no __version__'))"
-# commit and push
-git add requirements.txt
-git commit -m "Add coinbase-advanced-py to requirements"
-git push
+REQ
+
+# Verify file contents to be 100% sure there are no extra lines
+echo "===== requirements.txt ====="
+sed -n '1,200p' requirements.txt
