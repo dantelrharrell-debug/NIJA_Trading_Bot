@@ -4,12 +4,11 @@ from fastapi import FastAPI
 from coinbase_advanced_py import Client
 from dotenv import load_dotenv
 
-# Load API keys
 load_dotenv()
+
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
-# Initialize Coinbase client
 try:
     client = Client(API_KEY, API_SECRET)
     print("Coinbase client initialized successfully.")
@@ -32,15 +31,16 @@ async def balance():
             return {"error": str(e)}
     return {"error": "Coinbase client not initialized."}
 
-# Example autonomous trading loop
+# Autonomous trading loop
 async def trading_loop():
     if not client:
-        print("No client. Skipping trading loop.")
+        print("No client. Trading disabled.")
         return
     while True:
         try:
-            print("Balance:", client.get_usd_balance())
-            # TODO: Place real trading orders here
+            balance = client.get_usd_balance()
+            print("Balance:", balance)
+            # Add trading logic here
             await asyncio.sleep(10)
         except Exception as e:
             print("Trading loop error:", e)
