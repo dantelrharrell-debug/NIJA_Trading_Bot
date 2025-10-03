@@ -6,3 +6,15 @@ pandas==2.3.3
 scikit-learn==1.7.2
 python-dotenv==1.1.1
 requests==2.32.5
+# activate your local venv first if you use one, then:
+pip install coinbase-advanced-py==1.8.2
+# verify import works locally:
+python -c "import coinbase_advanced_py; print('ok', getattr(coinbase_advanced_py,'__version__', 'no __version__'))"
+
+# update requirements file
+pip freeze > requirements.txt
+
+# commit and push
+git add requirements.txt
+git commit -m "Add coinbase-advanced-py to requirements"
+git push
