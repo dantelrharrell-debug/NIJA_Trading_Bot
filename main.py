@@ -1,5 +1,19 @@
 # main.py
 import os
+from coinbase.wallet.client import Client
+
+def test_coinbase_connection():
+    try:
+        client = Client(os.getenv("API_KEY"), os.getenv("API_SECRET"))
+        account = client.get_accounts()  # Just a lightweight call
+        print("✅ Coinbase connection successful!")
+        print(f"First account: {account.data[0].name} | Balance: {account.data[0].balance.amount} {account.data[0].balance.currency}")
+    except Exception as e:
+        print(f"❌ Coinbase connection failed: {e}")
+
+# Run the test once when the app starts
+test_coinbase_connection()
+import os
 from fastapi import FastAPI
 
 # ----------------------------
