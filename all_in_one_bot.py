@@ -4,23 +4,24 @@ from fastapi import FastAPI
 from coinbase_advanced_py import Client
 from dotenv import load_dotenv
 
+# Load API keys
 load_dotenv()
-
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
+# Initialize Coinbase client
 try:
     client = Client(API_KEY, API_SECRET)
     print("Coinbase client initialized successfully.")
 except Exception as e:
-    print("Error initializing Coinbase client:", e)
-    client = None  # Run in diagnostic mode
+    print("Coinbase client failed:", e)
+    client = None
 
 app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"status": "Bot is running...", "coinbase_client": bool(client)}
+    return {"status": "Bot running", "coinbase_client": bool(client)}
 
 @app.get("/balance")
 async def balance():
@@ -34,24 +35,17 @@ async def balance():
 # Example autonomous trading loop
 async def trading_loop():
     if not client:
-        print("Coinbase client not initialized. Exiting trading loop.")
+        print("No client. Skipping trading loop.")
         return
-
     while True:
         try:
-            # Example: fetch balance
-            balance = client.get_usd_balance()
-            print("USD Balance:", balance)
-
-            # TODO: add real trading logic here
-            # Example: client.place_order("BTC-USD", "buy", amount)
-
-            await asyncio.sleep(10)  # Run every 10 seconds
+            print("Balance:", client.get_usd_balance())
+            # TODO: Place real trading orders here
+            await asyncio.sleep(10)
         except Exception as e:
-            print("Error in trading loop:", e)
+            print("Trading loop error:", e)
             await asyncio.sleep(10)
 
-# Start trading loop when app starts
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(trading_loop())
