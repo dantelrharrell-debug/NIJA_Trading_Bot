@@ -11,15 +11,37 @@ import numpy as np
 from fastapi import FastAPI, Request
 import uvicorn
 
-# ----------------------
-# Coinbase Advanced
-# ----------------------
+# ======================
+# Coinbase Advanced Import
+# ======================
 try:
-    import coinbase_advanced_py as cb
-    from coinbase_advanced_py import Client
-    print("✅ Coinbase Advanced module loaded")
+    # Primary import
+    from coinbase_advanced_py import Client as CoinbaseClient
+    print("✅ coinbase_advanced_py imported successfully")
 except ModuleNotFoundError:
-    print("❌ coinbase_advanced_py not installed!")
+    # Fallback check
+    import importlib.util
+    spec = importlib.util.find_spec("coinbase_advanced_py")
+    if spec is None:
+        print("❌ coinbase_advanced_py NOT FOUND! Make sure it's in requirements.txt")
+        import sys
+        sys.exit(1)
+    else:
+        from coinbase_advanced_py import Client as CoinbaseClient
+        print("✅ coinbase_advanced_py imported via fallback")
+
+# ======================
+# Connect to Coinbase Advanced
+# ======================
+API_KEY = os.getenv("API_KEY") or "your_api_key_here"
+API_SECRET = os.getenv("API_SECRET") or "your_api_secret_here"
+SANDBOX = False  # True for test, False for live
+
+try:
+    client = CoinbaseClient(api_key=API_KEY, api_secret=API_SECRET, sandbox=SANDBOX)
+    print("✅ Connected to Coinbase Advanced")
+except Exception as e:
+    print("❌ Failed to connect to Coinbase Advanced:", e)
     import sys
     sys.exit(1)
 
