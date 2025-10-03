@@ -1,84 +1,42 @@
+import os
 import logging
-logger = logging.getLogger("nija")
-
-try:
-    import coinbase_advanced_py as cb
-except ModuleNotFoundError:
-    cb = None
-    logger.error("coinbase_advanced_py not installed — trading disabled")
 from fastapi import FastAPI
-import os, logging
-
-logger = logging.getLogger("nija")
-try:
-    import coinbase_advanced_py as cb
-except ModuleNotFoundError:
-    cb = None
-    logger.exception("coinbase_advanced_py not installed. Make sure requirements.txt includes coinbase-advanced-py and redeploy.")
-    # optionally raise to fail fast in prod, or keep running but disable trading features:
-    # raise
-import time
-import threading
-import coinbase_advanced_py as cb
 from dotenv import load_dotenv
 
+# Load .env
 load_dotenv()
 
-app = FastAPI(title="NIJA Trading Bot")
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("nija")
 
-# Initialize Coinbase Advanced client
+# Attempt to import Coinbase client
 try:
-    client = cb.Client(
-        api_key=os.getenv("API_KEY"),
-        api_secret=os.getenv("API_SECRET")
+    import coinbase_advanced_py as cb
+    coinbase_client = cb.Client(
+        os.getenv("API_KEY"),
+        os.getenv("API_SECRET")
     )
-    coinbase_status = "Coinbase Advanced client initialized!"
+    logger.info("coinbase_advanced_py loaded successfully")
+except ModuleNotFoundError:
+    cb = None
+    coinbase_client = None
+    logger.exception("coinbase_advanced_py not installed — trading disabled.")
 except Exception as e:
-    coinbase_status = f"Coinbase init failed: {str(e)}"
+    cb = None
+    coinbase_client = None
+    logger.exception(f"Coinbase client init failed: {e}")
 
-# Settings
-TRADE_INTERVAL = 180  # seconds (3 minutes)
-MIN_BALANCE = 10      # minimum USD balance to trade
-SYMBOLS = ["BTC-USD", "ETH-USD", "LTC-USD", "SOL-USD"]  # trading pairs
+# FastAPI app
+app = FastAPI()
 
-def trade_loop():
-    while True:
-        try:
-            usd_balance = client.get_account("USD")["available"]
-            if float(usd_balance) < MIN_BALANCE:
-                print(f"Skipping trades: USD balance below minimum ({usd_balance})")
-            else:
-                for symbol in SYMBOLS:
-                    try:
-                        # Example simple strategy: market buy $10 per symbol
-                        order = client.place_market_order(
-                            symbol=symbol,
-                            side="buy",
-                            size=10,  # USD amount
-                            product_type="spot"
-                        )
-                        print(f"Executed trade: {order}")
-                    except Exception as e:
-                        print(f"Trade failed for {symbol}: {e}")
-        except Exception as e:
-            print(f"Error fetching USD balance: {e}")
-        time.sleep(TRADE_INTERVAL)
-
-# Start trading in background thread
-threading.Thread(target=trade_loop, daemon=True).start()
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "coinbase_client": bool(coinbase_client)
+    }
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "NIJA Trading Bot is live and trading!"}
-
-@app.get("/check-coinbase")
-def check_coinbase():
-    return {"status": "ok", "message": coinbase_status}
-
-@app.get("/balance")
-def get_balance():
-    try:
-        balance = client.get_account("USD")["available"]
-        return {"status": "ok", "USD_available": balance}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    return {"message": "NIJA Trading Bot API running"}
