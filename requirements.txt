@@ -1,40 +1,7 @@
 fastapi==0.109.0
 uvicorn==0.25.0
 coinbase-advanced-py==1.8.2
-python-dotenv==1.1.1
-numpy==2.3.3
-pandas==2.3.3
-scikit-learn==1.7.2
-requests==2.32.5
-fastapi
-uvicorn
-python-dotenv
-coinbase
-pydantic
-# 1) Replace bad line in requirements.txt with a correct minimal requirements list
-cat > requirements.txt <<'REQ'
-fastapi==0.109.0
-uvicorn==0.25.0
-coinbase-advanced-py==1.8.2
 numpy==2.3.3
 pandas==2.3.3
 python-dotenv==1.1.1
 requests==2.32.5
-REQ
-
-# 2) Ensure main.py imports the installed package name
-# This replaces "import coinbase_advanced as cb" with the correct "coinbase_advanced_py"
-sed -i "s/import coinbase_advanced as cb/import coinbase_advanced_py as cb/g" main.py
-
-# 3) Confirm the files look correct
-echo "=== requirements.txt ==="
-cat requirements.txt
-echo "=== first 6 lines of main.py ==="
-head -n 6 main.py
-
-# 4) Commit & push the fixes
-git add requirements.txt main.py
-git commit -m "Fix requirements.txt and use correct coinbase_advanced_py import"
-git push origin main
-git commit -m "Fix import: use coinbase_advanced_py and ensure dependency in requirements"
-git push origin main
