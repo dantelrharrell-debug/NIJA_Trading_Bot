@@ -50,7 +50,7 @@ import time
 import numpy as np
 import json
 from collections import deque
-
+from coinbase_advanced_py import Client
 # ======================
 # CONFIG
 # ======================
