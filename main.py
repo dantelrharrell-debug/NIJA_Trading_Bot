@@ -1,4 +1,6 @@
-# --- resilient import for Coinbase Advanced client ---
+import sys
+print("Python executable:", sys.executable)
+print("Python version:", sys.version)resilient import for Coinbase Advanced client ---
 import importlib, sys, traceback
 
 _coinbase_module = None
