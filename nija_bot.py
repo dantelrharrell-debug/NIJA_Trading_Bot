@@ -2,6 +2,10 @@ from fastapi import FastAPI, Request
 import uvicorn
 import coinbase_advanced_py as cb
 import os
+import logging
+from fastapi import FastAPI
+
+logger = logging.getLogger("nija")
 import time
 
 # ======================
