@@ -28,3 +28,5 @@ def diag():
             "API_KEY_present": bool(os.environ.get("API_KEY")),
         }
     }
+
+find . -name "coinbase*"
