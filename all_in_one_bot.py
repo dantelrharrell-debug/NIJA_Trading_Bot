@@ -1,269 +1,236 @@
 # all_in_one_bot.py
-# Drop-in replacement. Paste this file and redeploy.
-#
-# IMPORTANT: This file intentionally does NOT "from coinbase_advanced_py import Client"
-# at top level. It performs dynamic discovery at runtime to avoid ModuleNotFoundErrors.
+# Single-file diagnostic + simple FastAPI app for Coinbase import troubleshooting.
+# Overwrite your current entrypoint with this file, deploy, then visit /diag2.
 
-import os
 import sys
-import logging
+import os
+import platform
+import traceback
 import importlib
 import importlib.util
-from fastapi import FastAPI, APIRouter
+import pkgutil
+import logging
+from typing import Dict, Any
 
-LOG = logging.getLogger("all_in_one_bot")
-logging.basicConfig(level=logging.INFO)
-
-app = FastAPI(title="NIJA Trading Bot (diagnostic friendly)")
-
-# Global coinbase client placeholder
-coinbase_client = None
-coinbase_import_attempts = {}
-
-def try_import_coinbase():
-    """
-    Robust runtime importer:
-    - Inspect installed distributions with importlib.metadata for any dist with 'coinbase' in the dist name.
-    - Read their top_level.txt to get actual importable package names.
-    - Try to import those packages and look for common client constructors or attributes.
-    Returns (client_instance_or_None, attempts_dict).
-    """
-    attempts = {}
-    client = None
-
-    # common fallback candidate modules and attr names
-    fallback_candidates = [
-        ("coinbase_advanced_py", "Client"),
-        ("coinbase_advanced", "Client"),
-        ("coinbase", "Client"),
-        ("coinbase.wallet.client", "Client"),
-    ]
-
-    # 1) scan installed distributions via importlib.metadata for 'coinbase' in name
-    try:
-        try:
-            from importlib import metadata as importlib_metadata  # py3.8+
-        except Exception:
-            import importlib_metadata as importlib_metadata  # type: ignore
-        for dist in importlib_metadata.distributions():
-            dist_name = (dist.metadata.get("Name") or dist.metadata.get("name") or "").strip()
-            if not dist_name or "coinbase" not in dist_name.lower():
-                continue
-
-            key = f"dist:{dist_name}"
-            attempts[key] = {"status": "found_distribution"}
-            top_levels = []
-            try:
-                top = dist.read_text("top_level.txt")
-                if top:
-                    top_levels = [s.strip() for s in top.splitlines() if s.strip()]
-                attempts[key]["top_level"] = top_levels
-            except Exception as e:
-                attempts[key]["top_level_error"] = repr(e)
-                top_levels = []
-
-            # try to import each top level package
-            for pkg in top_levels:
-                try:
-                    spec = importlib.util.find_spec(pkg)
-                    if spec is None:
-                        attempts[key][pkg] = {"status": "not_found_by_find_spec"}
-                        continue
-                    module = importlib.import_module(pkg)
-                    attempts[key][pkg] = {"status": "imported", "module_attrs_sample": dir(module)[:30]}
-                    # try common Client attribute names
-                    for attr in ("Client", "client", "CoinbaseAdvancedClient"):
-                        if hasattr(module, attr):
-                            ClientClass = getattr(module, attr)
-                            try:
-                                # Try to instantiate with environment vars; if not present, try without
-                                api_key = os.getenv("COINBASE_API_KEY") or os.getenv("API_KEY")
-                                api_secret = os.getenv("COINBASE_API_SECRET") or os.getenv("API_SECRET")
-                                if api_key and api_secret:
-                                    client = ClientClass(api_key, api_secret)
-                                else:
-                                    # attempt no-arg or single-arg instantiation
-                                    try:
-                                        client = ClientClass()
-                                    except TypeError:
-                                        try:
-                                            client = ClientClass(api_key)
-                                        except Exception:
-                                            client = None
-                                attempts[key][pkg]["instantiated_via"] = attr
-                                if client:
-                                    LOG.info("Instantiated client from dist=%s pkg=%s attr=%s", dist_name, pkg, attr)
-                                    return client, attempts
-                            except Exception as e:
-                                attempts[key][pkg]["instantiation_error"] = repr(e)
-                except Exception as e:
-                    attempts[key][pkg] = {"status": "import_failed", "detail": repr(e)}
-    except Exception as e:
-        LOG.exception("importlib.metadata scan failed: %s", e)
-        attempts["importlib_metadata_scan_error"] = repr(e)
-
-    # 2) fallback: try fallback candidates
-    for mod_name, attr in fallback_candidates:
-        try:
-            spec = importlib.util.find_spec(mod_name)
-            if spec is None:
-                attempts[mod_name] = {"status": "not_found", "detail": "find_spec returned None"}
-                continue
-            module = importlib.import_module(mod_name)
-            attempts[mod_name] = {"status": "imported", "module_attrs_sample": dir(module)[:30]}
-            if hasattr(module, attr):
-                ClientClass = getattr(module, attr)
-                try:
-                    api_key = os.getenv("COINBASE_API_KEY") or os.getenv("API_KEY")
-                    api_secret = os.getenv("COINBASE_API_SECRET") or os.getenv("API_SECRET")
-                    if api_key and api_secret:
-                        client = ClientClass(api_key, api_secret)
-                    else:
-                        try:
-                            client = ClientClass()
-                        except TypeError:
-                            client = None
-                    attempts[mod_name]["client_instantiated"] = bool(client)
-                    if client:
-                        LOG.info("Instantiated client via fallback %s.%s", mod_name, attr)
-                        return client, attempts
-                except Exception as e:
-                    attempts[mod_name]["client_error"] = repr(e)
-            else:
-                attempts[mod_name]["has_attr"] = False
-        except Exception as e:
-            attempts[mod_name] = {"status": "import_failed", "detail": repr(e)}
-
-    # 3) last-ditch brute-force: enumerate modules in pkgutil that contain 'coinbase' in their name
-    try:
-        import pkgutil
-        bf = {}
-        for finder, name, ispkg in pkgutil.iter_modules():
-            if "coinbase" in name.lower():
-                try:
-                    module = importlib.import_module(name)
-                    bf[name] = {"imported": True, "attrs_sample": dir(module)[:30]}
-                except Exception as e:
-                    bf[name] = {"imported": False, "error": repr(e)}
-        if bf:
-            attempts["pkgutil_bruteforce"] = bf
-    except Exception as e:
-        attempts["pkgutil_bruteforce_error"] = repr(e)
-
-    return client, attempts
-
-# Run import attempt at startup
 try:
-    coinbase_client, coinbase_import_attempts = try_import_coinbase()
-    if coinbase_client:
-        LOG.info("Coinbase client successfully initialized.")
-    else:
-        LOG.warning("No usable Coinbase client found. Running in diagnostic mode.")
-        LOG.info("Coinbase import attempts: %s", coinbase_import_attempts)
+    # Python 3.8+ standard API for distribution metadata
+    from importlib import metadata as importlib_metadata
 except Exception:
-    LOG.exception("Unexpected error while trying to initialize coinbase client.")
-    coinbase_client = None
+    import importlib_metadata  # type: ignore
 
-# Minimal endpoints for health and diag
-router = APIRouter()
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-@router.get("/", tags=["health"])
-async def root():
-    return {
-        "status": "ok",
-        "coinbase_client": bool(coinbase_client),
-    }
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("all_in_one_bot")
 
-@router.get("/diag2", tags=["diagnostics"])
-async def diag2():
-    """
-    Diagnostics JSON:
-    - python executable & sample sys.path
-    - site-packages paths and coinbase-related entries inside them
-    - distributions with 'coinbase' in dist name and their top_level.txt
-    - the import attempts results
-    """
-    res = {}
-    res["python_executable"] = sys.executable
-    res["python_version"] = sys.version
-    res["sys_path_sample"] = sys.path[:12]
+app = FastAPI(title="NIJA Diagnostic + Bot (minimal)", version="1.0")
 
-    # site-packages coinbase matches
-    site_matches = []
-    for p in sys.path:
-        try:
-            if p and "site-packages" in p and os.path.isdir(p):
-                try:
-                    entries = sorted([e for e in os.listdir(p) if "coinbase" in e.lower()])[:50]
-                except Exception:
-                    entries = []
-                site_matches.append({"path": p, "entries": entries})
-        except Exception:
-            continue
-    res["site_packages_coinbase_matches"] = site_matches
+# --- Utility functions -----------------------------------------------------
 
-    # importlib.metadata scan for 'coinbase' in distribution names
+def try_import(module_name: str) -> Dict[str, Any]:
+    """Try to import module_name and return structured result (no exception escapes)."""
+    out = {"module": module_name, "found": False, "spec": None, "error": None, "attrs_sample": None}
     try:
-        try:
-            from importlib import metadata as importlib_metadata
-        except Exception:
-            import importlib_metadata as importlib_metadata  # type: ignore
-        dlist = []
-        for dist in importlib_metadata.distributions():
-            name = (dist.metadata.get("Name") or dist.metadata.get("name") or "").strip()
-            if "coinbase" in name.lower():
-                item = {"dist_name": name}
-                try:
-                    top = dist.read_text("top_level.txt")
-                    item["top_level"] = [s.strip() for s in top.splitlines() if s.strip()] if top else []
-                except Exception as e:
-                    item["top_level_error"] = repr(e)
-                # sample files under distribution root (best-effort)
-                try:
-                    loc = dist.locate_file("")
-                    if loc and os.path.isdir(loc):
-                        item["files_sample"] = sorted([f for f in os.listdir(loc) if "coinbase" in f.lower()])[:50]
-                    else:
-                        item["files_sample"] = None
-                except Exception as e:
-                    item["files_sample_error"] = repr(e)
-                dlist.append(item)
-        res["distributions_with_coinbase"] = dlist
+        spec = importlib.util.find_spec(module_name)
+        out["spec"] = None if spec is None else {"name": spec.name, "origin": getattr(spec, "origin", None)}
+        module = importlib.import_module(module_name)
+        out["found"] = True
+        # sample attributes to help debugging
+        out["attrs_sample"] = sorted([a for a in dir(module) if not a.startswith("_")])[:60]
     except Exception as e:
-        res["dist_scan_error"] = repr(e)
+        out["error"] = repr(e)
+    return out
 
-    # include the attempted import results (best-effort)
-    res["coinbase_import_attempts_sample"] = coinbase_import_attempts
-
-    return res
-
-app.include_router(router)
-
-# If you prefer a simple startup log
-@app.on_event("startup")
-async def startup_event():
-    LOG.info("Startup complete. coinbase_client: %s", bool(coinbase_client))
-    # Log short summary of import attempts
+def snapshot_site_paths() -> list:
+    """Return likely site-packages paths for the current interpreter/environment."""
+    paths = []
     try:
-        LOG.info("Coinbase import attempts summary keys: %s", list(coinbase_import_attempts.keys())[:40])
+        import site
+        # getsitepackages may not exist in some environments (virtualenv in some hosts),
+        # so guard it.
+        if hasattr(site, "getsitepackages"):
+            paths.extend(site.getsitepackages())
+        if hasattr(site, "getusersitepackages"):
+            paths.append(site.getusersitepackages())
     except Exception:
         pass
+    # fallback: use any sys.path entries that look like site-packages
+    paths.extend([p for p in sys.path if "site-packages" in str(p) or "dist-packages" in str(p)])
+    # de-duplicate while preserving order
+    seen = set()
+    out = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
 
-# Example placeholder - safe wrapper to call coinbase functions
-def get_coinbase_client():
-    """Return coinbase client or raise RuntimeError if missing."""
-    if not coinbase_client:
-        raise RuntimeError("Coinbase client not available. Check /diag2 for details.")
-    return coinbase_client
+def installed_distributions_snapshot(names=None):
+    """Return metadata for installed distributions relevant to the troubleshooting names."""
+    out = {}
+    try:
+        dists = list(importlib_metadata.distributions())
+        # if specific names provided, filter
+        for dist in dists:
+            key = dist.metadata["Name"] if "Name" in dist.metadata else dist.name
+            if names is None or any(n.lower() in key.lower() for n in names):
+                try:
+                    top_level = dist.read_text("top_level.txt")
+                    top_level_list = [s.strip() for s in (top_level or "").splitlines() if s.strip()]
+                except Exception:
+                    top_level_list = []
+                out[key] = {
+                    "version": dist.version,
+                    "metadata_name": key,
+                    "top_level": top_level_list,
+                    "location": getattr(dist, "locate_file", lambda x: None)(".")  # best-effort
+                }
+    except Exception as e:
+        out["error"] = repr(e)
+    return out
 
-# If you want an example endpoint that uses the client, keep it commented until you're ready:
-# @router.get("/balance")
-# async def balances():
-#     c = get_coinbase_client()
-#     # replace the following with the real client method:
-#     return {"balances": "example - replace with real calls"}
+def small_pkgutil_snapshot(limit=400):
+    """Return a brief snapshot of modules discoverable by pkgutil.iter_modules()."""
+    out = []
+    try:
+        for i, info in enumerate(pkgutil.iter_modules()):
+            out.append({"name": info.name, "ispkg": bool(info.ispkg), "finder": type(info.module_finder).__name__})
+            if i + 1 >= limit:
+                break
+    except Exception as e:
+        out = [{"error": repr(e)}]
+    return out
 
-if __name__ == "__main__":
-    # quick run for local dev
-    import uvicorn
-    uvicorn.run("all_in_one_bot:app", host="0.0.0.0", port=int(os.getenv("PORT", 10000)), log_level="info")
+# --- End utilities ---------------------------------------------------------
+
+@app.get("/")
+async def root():
+    return {
+        "status": "OK",
+        "message": "NIJA diagnostic app is running",
+        "python": sys.version,
+        "platform": platform.platform(),
+        "cwd": os.getcwd(),
+    }
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+@app.get("/modules")
+async def modules():
+    """Short snapshot of loaded / available modules."""
+    return {
+        "python_version": sys.version,
+        "top_loaded_count": len(sys.modules),
+        "top_loaded_sample": sorted(list(sys.modules.keys()))[:200],
+    }
+
+@app.get("/tryclient")
+async def tryclient():
+    """
+    Quick endpoint that attempts a few obvious coinbase imports and returns results.
+    Useful to paste back quickly.
+    """
+    candidate_names = ["coinbase_advanced_py", "coinbase_advanced", "coinbase", "coinbase.wallet", "coinbase.wallet.client"]
+    results = {n: try_import(n) for n in candidate_names}
+    return results
+
+@app.get("/diag2")
+async def diag2():
+    """
+    Full diagnostic endpoint. Paste this JSON back here when you redeploy.
+    """
+    try:
+        candidate_imports = [
+            "coinbase_advanced_py",
+            "coinbase_advanced",
+            "coinbase_advanced_py.client",
+            "coinbase_advanced.client",
+            "coinbase.wallet",
+            "coinbase.wallet.client",
+            "coinbase",
+        ]
+
+        import_attempts = {name: try_import(name) for name in candidate_imports}
+
+        # check distributions relevant to coinbase
+        dists = installed_distributions_snapshot(names=["coinbase", "coinbase-advanced", "coinbase-advanced-py", "coinbase_advanced"])
+
+        response = {
+            "python_executable": sys.executable,
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "cwd": os.getcwd(),
+            "site_paths": snapshot_site_paths(),
+            "sys_path_sample": sys.path[:60],
+            "import_attempts": import_attempts,
+            "installed_distributions_relevant": dists,
+            "pkgutil_snapshot_sample": small_pkgutil_snapshot(limit=200),
+            "notes": [
+                "If coinbase-advanced-py distribution is present but import name coinbase_advanced_py isn't found, check top-level package names (some dists install a 'coinbase' package).",
+                "Ensure your entrypoint file contains only Python code — do not paste shell commands like `find . -name ...` into Python files."
+            ],
+        }
+        log.info("diag2 requested; returning diagnostic JSON.")
+        return JSONResponse(content=response, status_code=200)
+    except Exception as e:
+        tb = traceback.format_exc()
+        log.error("diag2 failed: %s", tb)
+        return JSONResponse(content={"error": repr(e), "traceback": tb}, status_code=500)
+
+# --- If you want to include minimal bot startup logic, put it after the endpoints above.
+# Keep it minimal so the app boots even when coinbase client isn't available.
+def try_init_coinbase_client():
+    """
+    Attempt to construct a client object from known packages — purely diagnostic.
+    Returns a dict describing the best attempt (no network calls).
+    """
+    result = {"success": False, "attempts": []}
+    # Order of attempts: coinbase_advanced_py (preferred), coinbase_advanced, coinbase.wallet, coinbase
+    attempts = [
+        ("coinbase_advanced_py", "Client"),
+        ("coinbase_advanced", "Client"),
+        ("coinbase.wallet.client", "Client"),
+        ("coinbase", "Client"),  # older coinbase library naming
+    ]
+    for module_name, attr in attempts:
+        try:
+            spec = importlib.util.find_spec(module_name)
+            if spec is None:
+                result["attempts"].append({module_name: "spec_not_found"})
+                continue
+            mod = importlib.import_module(module_name)
+            if hasattr(mod, attr):
+                result["attempts"].append({module_name: f"has_attr_{attr}"})
+                try:
+                    # Do NOT instantiate with keys — just show repr of class/obj
+                    cls = getattr(mod, attr)
+                    result["attempts"].append({module_name + "." + attr: repr(cls)[:400]})
+                    result["success"] = True
+                    result["client_module"] = module_name
+                    break
+                except Exception as e:
+                    result["attempts"].append({module_name + "." + attr: "imported_but_could_not_get_repr: " + repr(e)})
+            else:
+                result["attempts"].append({module_name: f"imported_no_attr_{attr}"})
+        except Exception as e:
+            result["attempts"].append({module_name: "import_failed: " + repr(e)})
+    return result
+
+# run minimal diagnostic at import time to log to server logs
+try:
+    coinbase_diag = try_init_coinbase_client()
+    log.info("Coinbase import attempts summary keys: %s", list(coinbase_diag.get("attempts", [])[:6]))
+    log.info("Startup coinbase client available: %s", coinbase_diag.get("success", False))
+except Exception:
+    log.exception("Unexpected error during coinbase init diagnostic.")
+
+# If you have a real bot, you can import its run loop here conditionally, e.g.:
+# if coinbase_diag.get("success"):
+#     from my_real_bot import start_bot
+#     start_bot(client=...)   # but do this carefully; keep app startup fast.
+
+# End of file
