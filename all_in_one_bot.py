@@ -1,3 +1,8 @@
+try:
+    from coinbase_advanced_py import Client
+    print("Coinbase client module loaded ✅")
+except ModuleNotFoundError:
+    print("❌ Coinbase client module NOT FOUND")
 # main.py (Live Autonomous NIJA Trading Bot)
 import os
 import logging
