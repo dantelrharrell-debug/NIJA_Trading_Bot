@@ -1,3 +1,8 @@
+try:
+    import coinbase_advanced_py
+    print("✅ coinbase_advanced_py detected!")
+except ImportError:
+    print("❌ coinbase_advanced_py NOT detected!")
 # main.py — NIJA Trading Bot single-file app (drop-in)
 import os
 import sys
