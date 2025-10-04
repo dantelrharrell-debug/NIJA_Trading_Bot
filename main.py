@@ -1,4 +1,25 @@
 import importlib.util
+import subprocess
+import sys
+
+def ensure_coinbase_modules():
+    modules = {
+        "coinbase_advanced_py": "coinbase-advanced-py",
+        "coinbase_advanced": "coinbase-advanced",  # optional if you plan to use it
+        "coinbase.wallet": "coinbase",  # for classic Coinbase
+        "coinbase.wallet.client": "coinbase",
+    }
+
+    for mod_name, pip_name in modules.items():
+        if importlib.util.find_spec(mod_name) is None:
+            print(f"❌ Module {mod_name} not found. Installing {pip_name}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
+        else:
+            print(f"✅ Module {mod_name} found.")
+
+# Run this before anything else
+ensure_coinbase_modules()
+import importlib.util
 import sys
 
 def check_coinbase_imports():
