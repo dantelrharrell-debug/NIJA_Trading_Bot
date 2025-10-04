@@ -1,3 +1,47 @@
+import os
+
+print("\n=== NIJA TRADING BOT DEBUG & AUTO-ENABLE ===\n")
+
+# Check Python version
+import sys
+print(f"Python version: {sys.version}")
+
+# Check if API keys are set
+api_key = os.getenv("API_KEY")
+api_secret = os.getenv("API_SECRET")
+print(f"API_KEY present: {bool(api_key)}")
+print(f"API_SECRET present: {bool(api_secret)}")
+
+# Initialize trading flag
+TRADING_ENABLED = False
+
+# Try importing Coinbase Advanced
+try:
+    import coinbase_advanced_py
+    print("✅ coinbase_advanced_py detected!")
+except ImportError:
+    print("❌ coinbase_advanced_py NOT detected!")
+
+# Try initializing Coinbase client
+client = None
+if api_key and api_secret:
+    try:
+        client = coinbase_advanced_py.Client(api_key, api_secret)
+        print("✅ Coinbase client initialized successfully!")
+        TRADING_ENABLED = True
+    except Exception as e:
+        print("❌ Coinbase client failed to initialize!")
+        print("Error:", e)
+else:
+    print("⚠️ Cannot initialize Coinbase client — missing API keys")
+
+# Final status
+if TRADING_ENABLED:
+    print("🔥 Trading ENABLED!")
+else:
+    print("⚠️ Trading DISABLED!")
+
+print("\n=== NIJA TRADING BOT DEBUG & AUTO-ENABLE END ===\n")
 try:
     import coinbase_advanced_py
     print("✅ coinbase_advanced_py detected!")
