@@ -1,3 +1,41 @@
+import os
+import logging
+
+# Try to import the Coinbase client library
+coinbase_client = None
+coinbase_module_name = None
+
+try:
+    from coinbase_advanced_py import Client as CoinbaseClient
+    coinbase_module_name = "coinbase_advanced_py"
+except ModuleNotFoundError:
+    logging.warning(
+        "No Coinbase client library found. "
+        "Tried coinbase_advanced_py. Trading will be disabled."
+    )
+
+# Initialize the client if the module was found
+if coinbase_module_name:
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
+    if not API_KEY or not API_SECRET:
+        logging.error("API_KEY or API_SECRET missing in environment variables!")
+    else:
+        coinbase_client = CoinbaseClient(API_KEY, API_SECRET)
+        logging.info("Coinbase client initialized successfully.")
+
+# For your '/' health endpoint
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {
+        "status": "Bot is live",
+        "coinbase_client_detected": coinbase_client is not None,
+        "coinbase_module": coinbase_module_name,
+    }
 # main.py
 """
 NIJA Trading Bot single-file app
