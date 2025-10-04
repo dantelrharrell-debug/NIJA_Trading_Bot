@@ -1,51 +1,94 @@
 # all_in_one_bot.py
 import os
-import time
+import sys
 import asyncio
-import importlib
 import logging
-from typing import Optional
+import importlib
+import pkgutil
+from typing import Optional, Dict, Any
 
-from fastapi import FastAPI, BackgroundTasks
-from dotenv import load_dotenv
+from fastapi import FastAPI
 
-load_dotenv()
-
-LOG = logging.getLogger("nija_bot")
+# --- logging ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+LOG = logging.getLogger("all_in_one_bot")
 
-# Config
+# --- env ---
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 PORT = int(os.getenv("PORT", "10000"))
 
-# App
-app = FastAPI(title="NIJA Trading Bot (diagnostic-friendly)")
+app = FastAPI(title="NIJA Bot (diagnostic friendly)")
 
-# Globals to hold client & status
+# Global state
 coinbase_client = None
-coinbase_import_attempts = {}
+coinbase_import_attempts: Dict[str, Any] = {}
 trading_task: Optional[asyncio.Task] = None
 trading_running = False
 
-# Try import variants that might exist on the system.
-IMPORT_VARIANTS = [
+# Candidate import names to try (we will not import at module-import time)
+IMPORT_CANDIDATES = [
     ("coinbase_advanced_py", "Client"),
     ("coinbase_advanced", "Client"),
     ("coinbase_advanced_py.client", "Client"),
     ("coinbase_advanced.client", "Client"),
     ("coinbase", "Client"),
+    ("coinbase.wallet.client", "Client"),
 ]
+
+def list_coinbase_top_level() -> Dict[str, Any]:
+    """
+    Diagnostic: find coinbase-related top-level modules visible to the running interpreter.
+    Also return distributions that mention 'coinbase' if importlib.metadata is available.
+    """
+    found = {"pkgutil_modules": [], "site_packages_listing": [], "distributions": []}
+    try:
+        for m in pkgutil.iter_modules():
+            name = m.name
+            if "coinbase" in name.lower():
+                found["pkgutil_modules"].append(name)
+    except Exception as e:
+        LOG.exception("pkgutil.iter_modules failed: %s", e)
+
+    # list files in site-packages that start with coinbase*
+    try:
+        for p in sys.path:
+            try:
+                if not p or "site-packages" not in p:
+                    continue
+                for fn in os.listdir(p):
+                    if fn.lower().startswith("coinbase"):
+                        found["site_packages_listing"].append(os.path.join(p, fn))
+            except Exception:
+                continue
+    except Exception as e:
+        LOG.exception("listing site-packages failed: %s", e)
+
+    # importlib.metadata to list installed distributions (Python 3.8+)
+    try:
+        try:
+            from importlib import metadata as importlib_metadata
+        except Exception:
+            import importlib_metadata
+        for dist in importlib_metadata.distributions():
+            name = dist.metadata["Name"] if "Name" in dist.metadata else dist.metadata.get("name", "")
+            if name and "coinbase" in name.lower():
+                found["distributions"].append(name)
+    except Exception:
+        # best-effort; ignore failures
+        pass
+
+    return found
 
 def try_import_coinbase():
     """
-    Attempt to import the Coinbase Advanced client using several common module names.
-    Returns an instantiated client (or None) and a dict describing attempts.
+    Try a set of candidate module names and attributes. Return (client_instance_or_None, attempts_dict).
+    This function purposely does not run at module import time (call it in startup event).
     """
     attempts = {}
     client = None
 
-    for mod_name, attr in IMPORT_VARIANTS:
+    for mod_name, attr in IMPORT_CANDIDATES:
         try:
             spec = importlib.util.find_spec(mod_name)
             if spec is None:
@@ -54,9 +97,7 @@ def try_import_coinbase():
 
             module = importlib.import_module(mod_name)
             attempts[mod_name] = {"status": "imported", "module": mod_name}
-            LOG.info("Imported module %s", mod_name)
 
-            # if the module exposes a Client class or attr, try to instantiate
             if hasattr(module, attr):
                 ClientClass = getattr(module, attr)
                 try:
@@ -75,35 +116,42 @@ def try_import_coinbase():
 
     return client, attempts
 
-# Initialize (on import) but keep tolerant.
-coinbase_client, coinbase_import_attempts = try_import_coinbase()
-if coinbase_client:
-    LOG.info("Coinbase client ready.")
-else:
-    LOG.warning("No usable Coinbase client found. Running in diagnostic mode. Import attempts: %s", coinbase_import_attempts)
+@app.on_event("startup")
+async def startup_event():
+    global coinbase_client, coinbase_import_attempts
+    LOG.info("Application startup: attempting to import coinbase client (lazy).")
+    coinbase_client, coinbase_import_attempts = try_import_coinbase()
+    if coinbase_client:
+        LOG.info("Coinbase client ready.")
+    else:
+        LOG.warning("No usable Coinbase client found. Running in diagnostic mode.")
+    LOG.info("Startup complete.")
 
-# Health endpoint
 @app.get("/")
 async def root():
     return {
         "status": "running",
         "coinbase_client": bool(coinbase_client),
-        "import_attempts": coinbase_import_attempts
+        "import_attempts": coinbase_import_attempts,
+        "diagnostic": list_coinbase_top_level()
     }
 
-@app.get("/status")
-async def status():
+@app.get("/diag")
+async def diag():
+    # same as root but verbose
     return {
-        "trading_running": trading_running,
-        "coinbase_client": bool(coinbase_client)
+        "coinbase_client": bool(coinbase_client),
+        "import_attempts": coinbase_import_attempts,
+        "diagnostic": list_coinbase_top_level(),
+        "python_executable": sys.executable,
+        "sys_path": sys.path[:6]
     }
 
 @app.post("/start_trading")
-async def start_trading(background_tasks: BackgroundTasks):
+async def start_trading():
     global trading_task, trading_running
     if trading_running:
         return {"status": "already_running"}
-    # Start background loop
     loop = asyncio.get_running_loop()
     trading_task = loop.create_task(trading_loop())
     trading_running = True
@@ -119,56 +167,35 @@ async def stop_trading():
     return {"status": "stopped"}
 
 async def trading_loop():
-    """
-    Basic example auto-trader loop. Replace placeholder logic here with your real trading strategy.
-    This function must handle exceptions and never crash the process.
-    """
     global trading_running
-    LOG.info("Trading loop started.")
+    LOG.info("Trading loop started (placeholder).")
     try:
         while True:
-            # If we don't have a client, only run diagnostic checks
             if not coinbase_client:
-                LOG.info("Diagnostic mode: no client. Sleeping 30s.")
+                LOG.info("Trading loop: no coinbase client; diagnostic sleep 30s.")
                 await asyncio.sleep(30)
                 continue
 
-            # ===== PLACEHOLDER STRATEGY =====
-            # Example: get account balances (pseudo)
+            # ===== REPLACE THIS BLOCK WITH REAL STRATEGY =====
             try:
-                # Replace the calls below with actual methods of the client you end up using.
-                # Some clients use client.get_accounts(), client.get_balance(), etc.
-                # Example diagnostic call (safe): attempt to read some attribute / method
+                # Safe call example — adjust to your client's API
                 if hasattr(coinbase_client, "get_usd_balance"):
-                    bal = coinbase_client.get_usd_balance()
-                    LOG.info("USD balance: %s", bal)
+                    try:
+                        bal = coinbase_client.get_usd_balance()
+                        LOG.info("USD balance: %s", bal)
+                    except Exception as e:
+                        LOG.warning("Balance check failed: %s", e)
                 else:
-                    LOG.debug("Client has no get_usd_balance; checking generic attrs")
-                    # try other safe ops or just log a heartbeat
-                    LOG.info("Heartbeat: client appears usable.")
-            except Exception as e:
-                LOG.exception("Error while querying client: %s", e)
+                    LOG.info("Client present but get_usd_balance not found; heartbeat.")
+            except Exception:
+                LOG.exception("Error in trading step.")
+            # ==================================================
 
-            # Sleep before next iteration
             await asyncio.sleep(10)
     except asyncio.CancelledError:
         LOG.info("Trading loop cancelled.")
-    except Exception as e:
-        LOG.exception("Unhandled error in trading loop: %s", e)
+    except Exception:
+        LOG.exception("Unhandled error in trading loop.")
     finally:
         trading_running = False
         LOG.info("Trading loop ended.")
-
-# On startup, log paths and pip-installed coinbase packages sample
-@app.on_event("startup")
-async def on_startup():
-    LOG.info("Application startup complete.")
-    # list candidate modules found on sys.path (diagnostic)
-    import sys
-    LOG.info("sys.path sample: %s", sys.path[:4])
-    try:
-        import pkgutil
-        matches = [m.name for m in pkgutil.iter_modules() if "coinbase" in m.name.lower()]
-        LOG.info("coinbase-related modules visible to pkgutil.iter_modules(): %s", matches)
-    except Exception:
-        LOG.exception("Failed to list modules via pkgutil.")
