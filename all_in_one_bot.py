@@ -1,85 +1,81 @@
-import importlib
-import importlib.util
-import logging
+# main.py (Live Autonomous NIJA Trading Bot)
 import os
+import logging
 from fastapi import FastAPI, Request
+from pydantic import BaseModel
+from coinbase_advanced_py import Client
+import uvicorn
 
-# ---------------- Logging Setup ----------------
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("all_in_one_bot")
+# ---------- Logging ----------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+log = logging.getLogger("nija_trading_bot")
 
-# ---------------- FastAPI App ----------------
-app = FastAPI(title="NIJA Trading Bot")
+# ---------- Load Env ----------
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+PORT = int(os.getenv("PORT", 8000))
 
-# ---------------- Coinbase Client Auto-Discovery ----------------
-CLIENT_CLASS = None
-CLIENT_MODULE = None
+if not API_KEY or not API_SECRET:
+    log.error("API_KEY or API_SECRET missing!")
+    raise EnvironmentError("API_KEY and API_SECRET must be set in .env")
 
-candidates = [
-    ("coinbase_advanced_py", "Client"),
-    ("coinbase_advanced", "Client"),
-    ("coinbase.wallet.client", "Client"),
-    ("coinbase.client", "Client"),
-    ("coinbase", "Client"),
-]
+# ---------- Coinbase Client ----------
+try:
+    client = Client(API_KEY, API_SECRET)
+    log.info("Coinbase client initialized ✅")
+except Exception as e:
+    log.error("Failed to initialize Coinbase client: %s", e)
+    raise e
 
-def find_likely_client_in_module(m):
-    """Return an attribute (callable/class) from module m that looks like a client."""
-    names = [n for n in dir(m) if not n.startswith("_")]
-    preferred = ["Client", "WalletClient", "CoinbaseClient", "AdvancedClient"]
-    for p in preferred:
-        if p in names:
-            cand = getattr(m, p)
-            if callable(cand):
-                return cand, p
-    for n in names:
-        if "client" in n.lower() or "wallet" in n.lower():
-            cand = getattr(m, n)
-            if callable(cand):
-                return cand, n
-    return None, None
+# ---------- FastAPI ----------
+app = FastAPI(title="NIJA Trading Bot Live")
 
-for mod_name, attr in candidates:
+# ---------- Pydantic Model ----------
+class TradeSignal(BaseModel):
+    symbol: str      # e.g., BTC, ETH
+    action: str      # buy or sell
+    size: float      # USD amount or crypto units
+
+# ---------- Helper Functions ----------
+def safe_execute_trade(symbol: str, action: str, size: float):
+    """Executes trade safely, logs before sending."""
+    if size <= 0:
+        log.warning("Trade size invalid, skipping: %s %s %s", action, size, symbol)
+        return {"status": "skipped", "reason": "invalid size"}
+
+    product_id = f"{symbol}-USD"
+    log.info("Placing %s order: %s %s", action, size, product_id)
+
     try:
-        spec = importlib.util.find_spec(mod_name)
-        if spec is None:
-            log.debug("spec not found for %s", mod_name)
-            continue
-        m = importlib.import_module(mod_name)
-        if hasattr(m, attr):
-            CLIENT_CLASS = getattr(m, attr)
-            CLIENT_MODULE = mod_name
-            log.info("Found %s in %s", attr, mod_name)
-            break
-        cand, cand_name = find_likely_client_in_module(m)
-        if cand:
-            CLIENT_CLASS = cand
-            CLIENT_MODULE = mod_name + "." + cand_name
-            log.info("Auto-selected client-like attribute %s from %s", cand_name, mod_name)
-            break
+        if action.lower() == "buy":
+            order = client.place_market_order(product_id=product_id, side="buy", funds=str(size))
+        elif action.lower() == "sell":
+            order = client.place_market_order(product_id=product_id, side="sell", size=str(size))
         else:
-            log.debug("%s imported but no candidate client attr found", mod_name)
+            log.warning("Unknown action received: %s", action)
+            return {"status": "error", "detail": "Unknown action"}
+        
+        log.info("Trade executed successfully: %s", order)
+        return {"status": "success", "order": order}
     except Exception as e:
-        log.debug("Import attempt failed for %s: %s", mod_name, repr(e))
+        log.error("Trade failed: %s", e)
+        return {"status": "error", "detail": str(e)}
 
-if CLIENT_CLASS is None:
-    log.warning("No Coinbase client class found among candidates. Running in diagnostic mode.")
-else:
-    log.info("Using Coinbase client %s from module %s",
-             getattr(CLIENT_CLASS, "__name__", str(CLIENT_CLASS)), CLIENT_MODULE)
-
-# ---------------- Root Endpoint ----------------
+# ---------- Routes ----------
 @app.get("/")
 async def root():
-    return {
-        "status": "Bot is live",
-        "coinbase_client_detected": CLIENT_CLASS is not None,
-        "coinbase_module": CLIENT_MODULE
-    }
+    return {"status": "NIJA Trading Bot LIVE"}
 
-# ---------------- Example Webhook Endpoint ----------------
 @app.post("/webhook")
-async def webhook_handler(request: Request):
-    data = await request.json()
-    log.info("Received webhook data: %s", data)
-    return {"status": "received"}
+async def webhook(signal: TradeSignal, request: Request):
+    """Receives TradingView webhook signals and executes trades live."""
+    log.info("Webhook received: %s", signal.dict())
+    result = safe_execute_trade(signal.symbol, signal.action, signal.size)
+    return result
+
+# ---------- Run Server ----------
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT)
