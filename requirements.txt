@@ -1,3 +1,5 @@
+cryptography==46.0.2
+coinbase-advanced-py==1.8.2
 fastapi==0.109.0
 uvicorn==0.25.0
 python-dotenv==1.1.1
@@ -5,5 +7,3 @@ numpy==2.3.3
 pandas==2.3.3
 scikit-learn==1.7.2
 requests==2.32.5
-coinbase-advanced-py==1.8.2
-cryptography==46.0.2
