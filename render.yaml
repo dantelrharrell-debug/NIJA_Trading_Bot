@@ -1,5 +1,5 @@
 services:
-  - type: worker
+  - type: worker          # 'worker' runs in the background; use 'web' only for HTTP apps
     name: nija-trading-bot
     env: python
     region: oregon
