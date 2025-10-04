@@ -13,6 +13,34 @@ from typing import Optional, Any, Tuple
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import numpy as np
+from coinbase_advanced_py import Client
+import os
+
+c = Client(os.getenv("API_KEY"), os.getenv("API_SECRET"))
+
+def adaptive_position_size(equity, volatility, risk=0.01):
+    # Max 1% risk per trade
+    size = equity * risk / volatility
+    return max(0.001, size)  # Ensure minimum trade
+
+def adaptive_tp(price, volatility, trend_strength):
+    return price + trend_strength * volatility
+
+def adaptive_sl(price, volatility, trend_strength):
+    return price - trend_strength * volatility
+
+def execute_trade(symbol, side, quantity, price, tp, sl):
+    order = c.place_order(
+        symbol=symbol,
+        side=side,
+        quantity=quantity,
+        price=price,
+        type="market",
+        take_profit=tp,
+        stop_loss=sl
+    )
+    return order
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("coinbase_loader")
