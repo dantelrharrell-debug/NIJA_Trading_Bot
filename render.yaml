@@ -1,16 +1,16 @@
 services:
-  - type: web  # or "background" if you want it running continuously
+  - type: background
     name: nija-trading-bot
     env: python
     region: oregon
     plan: starter
+    pythonVersion: "3.13"
     buildCommand: |
       python3 -m pip install --upgrade pip
-      python3 -m pip install --force-reinstall -r requirements.txt
+      python3 -m pip install -r requirements.txt
     startCommand: python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: API_KEY
         fromSecret: COINBASE_API_KEY
       - key: API_SECRET
         fromSecret: COINBASE_API_SECRET
-    pythonVersion: "3.13"
