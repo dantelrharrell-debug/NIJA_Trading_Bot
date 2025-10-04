@@ -1,38 +1,85 @@
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-import sys, os, platform, pkgutil, traceback
+import importlib
+import importlib.util
+import logging
+import os
+from fastapi import FastAPI, Request
 
-app = FastAPI(title="NIJA Diagnostic", version="1.0")
+# ---------------- Logging Setup ----------------
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("all_in_one_bot")
 
-def try_import(name):
-    out = {"name": name, "found": False, "import_error": None, "attrs": None}
+# ---------------- FastAPI App ----------------
+app = FastAPI(title="NIJA Trading Bot")
+
+# ---------------- Coinbase Client Auto-Discovery ----------------
+CLIENT_CLASS = None
+CLIENT_MODULE = None
+
+candidates = [
+    ("coinbase_advanced_py", "Client"),
+    ("coinbase_advanced", "Client"),
+    ("coinbase.wallet.client", "Client"),
+    ("coinbase.client", "Client"),
+    ("coinbase", "Client"),
+]
+
+def find_likely_client_in_module(m):
+    """Return an attribute (callable/class) from module m that looks like a client."""
+    names = [n for n in dir(m) if not n.startswith("_")]
+    preferred = ["Client", "WalletClient", "CoinbaseClient", "AdvancedClient"]
+    for p in preferred:
+        if p in names:
+            cand = getattr(m, p)
+            if callable(cand):
+                return cand, p
+    for n in names:
+        if "client" in n.lower() or "wallet" in n.lower():
+            cand = getattr(m, n)
+            if callable(cand):
+                return cand, n
+    return None, None
+
+for mod_name, attr in candidates:
     try:
-        spec = importlib.util.find_spec(name)
-        out["find_spec"] = None if spec is None else {"name": spec.name, "origin": getattr(spec, "origin", None)}
-        module = importlib.import_module(name)
-        out["found"] = True
-        out["attrs"] = sorted([a for a in dir(module) if not a.startswith("_")])[:40]
+        spec = importlib.util.find_spec(mod_name)
+        if spec is None:
+            log.debug("spec not found for %s", mod_name)
+            continue
+        m = importlib.import_module(mod_name)
+        if hasattr(m, attr):
+            CLIENT_CLASS = getattr(m, attr)
+            CLIENT_MODULE = mod_name
+            log.info("Found %s in %s", attr, mod_name)
+            break
+        cand, cand_name = find_likely_client_in_module(m)
+        if cand:
+            CLIENT_CLASS = cand
+            CLIENT_MODULE = mod_name + "." + cand_name
+            log.info("Auto-selected client-like attribute %s from %s", cand_name, mod_name)
+            break
+        else:
+            log.debug("%s imported but no candidate client attr found", mod_name)
     except Exception as e:
-        out["import_error"] = repr(e)
-    return out
+        log.debug("Import attempt failed for %s: %s", mod_name, repr(e))
 
-@app.get("/diag2")
-async def diag2():
-    try:
-        attempts = ["coinbase_advanced_py", "coinbase_advanced", "coinbase.wallet.client", "coinbase"]
-        import_results = {name: try_import(name) for name in attempts}
-        site_paths = [p for p in sys.path if "site-packages" in p or "dist-packages" in p][:6]
-        response = {
-            "python_executable": sys.executable,
-            "python_version": sys.version,
-            "platform": platform.platform(),
-            "cwd": os.getcwd(),
-            "site_paths": site_paths,
-            "import_attempts": import_results,
-            "sys_path": sys.path[:50],
-            "loaded_modules_sample": sorted(list(sys.modules.keys()))[:150],
-        }
-        return JSONResponse(content=response, status_code=200)
-    except Exception as e:
-        tb = traceback.format_exc()
-        return JSONResponse(content={"error": repr(e), "traceback": tb}, status_code=500)
+if CLIENT_CLASS is None:
+    log.warning("No Coinbase client class found among candidates. Running in diagnostic mode.")
+else:
+    log.info("Using Coinbase client %s from module %s",
+             getattr(CLIENT_CLASS, "__name__", str(CLIENT_CLASS)), CLIENT_MODULE)
+
+# ---------------- Root Endpoint ----------------
+@app.get("/")
+async def root():
+    return {
+        "status": "Bot is live",
+        "coinbase_client_detected": CLIENT_CLASS is not None,
+        "coinbase_module": CLIENT_MODULE
+    }
+
+# ---------------- Example Webhook Endpoint ----------------
+@app.post("/webhook")
+async def webhook_handler(request: Request):
+    data = await request.json()
+    log.info("Received webhook data: %s", data)
+    return {"status": "received"}
