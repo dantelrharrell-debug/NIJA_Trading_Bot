@@ -1,5 +1,5 @@
 services:
-  - type: worker            # runs continuously in the background
+  - type: worker
     name: nija-trading-bot
     env: python
     region: oregon
