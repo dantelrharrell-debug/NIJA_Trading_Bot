@@ -1,19 +1,27 @@
 # coinbase_loader.py
 """
 Robust Coinbase client auto-discovery.
-Place this in your project and import `get_coinbase_client_class()`
-or `get_coinbase_client()` from it instead of `from coinbase_advanced_py import Client`.
+
+Exports:
+- CLIENT_CLASS: the discovered client class or callable, or None
+- CLIENT_MODULE: module path string where it was found (or None)
+- DISCOVERY_DEBUG: dict with debug info about attempts
+- instantiate_client(**kwargs): try to instantiate discovered client with sensible kwargs
 """
 
 import importlib
 import importlib.util
 import logging
-import os
-from typing import Optional, Tuple, Any, Callable
+from typing import Any, Optional, Tuple
 
 log = logging.getLogger(__name__)
 
-CANDIDATE_MODULES = [
+CLIENT_CLASS = None
+CLIENT_MODULE = None
+DISCOVERY_DEBUG = {"attempts": []}
+
+# candidate modules and preferred attribute names
+CANDIDATES = [
     ("coinbase_advanced_py", "Client"),
     ("coinbase_advanced", "Client"),
     ("coinbase.wallet.client", "Client"),
@@ -21,85 +29,112 @@ CANDIDATE_MODULES = [
     ("coinbase", "Client"),
 ]
 
-def _find_likely_client_in_module(module) -> Tuple[Optional[Callable], Optional[str]]:
-    """Look for something that looks like a client in module and return (callable, name)."""
-    names = [n for n in dir(module) if not n.startswith("_")]
-    # prefer explicit common names
+
+def find_likely_client_in_module(m) -> Tuple[Optional[Any], Optional[str]]:
+    """
+    Inspect module m and return (callable_attr, attr_name) if it looks like a client.
+    """
+    names = [n for n in dir(m) if not n.startswith("_")]
     preferred = ["Client", "WalletClient", "CoinbaseClient", "AdvancedClient"]
     for p in preferred:
         if p in names:
-            cand = getattr(module, p)
+            cand = getattr(m, p)
             if callable(cand):
                 return cand, p
-    # fallback: find any callable with 'client' or 'wallet' in its name
+    # fallback: any callable with 'client' or 'wallet' in the name
     for n in names:
         if "client" in n.lower() or "wallet" in n.lower():
-            cand = getattr(module, n)
+            cand = getattr(m, n)
             if callable(cand):
                 return cand, n
     return None, None
 
-def get_coinbase_client_class() -> Tuple[Optional[Callable], Optional[str]]:
-    """
-    Attempts to locate a Coinbase client class/function in a variety of module names.
-    Returns (client_class_or_factory, module_path_name) or (None, None) if nothing found.
-    """
-    for mod_name, attr_name in CANDIDATE_MODULES:
-        try:
-            spec = importlib.util.find_spec(mod_name)
-            if spec is None:
-                log.debug("Spec not found for %s", mod_name)
-                continue
-            m = importlib.import_module(mod_name)
-            # prefer explicit attribute if present
-            if hasattr(m, attr_name):
-                cand = getattr(m, attr_name)
-                if callable(cand):
-                    log.info("Found Coinbase client attribute %s in %s", attr_name, mod_name)
-                    return cand, f"{mod_name}.{attr_name}"
-            # attempt to auto-detect a client-like member
-            cand, name = _find_likely_client_in_module(m)
-            if cand:
-                log.info("Auto-selected client-like attribute %s from %s", name, mod_name)
-                return cand, f"{mod_name}.{name}"
-            log.debug("%s imported but no client-like attr found", mod_name)
-        except Exception as e:
-            log.debug("Import attempt failed for %s: %s", mod_name, repr(e))
-    log.warning("No Coinbase client class found among candidates.")
-    return None, None
 
-def get_coinbase_client(**override_kwargs) -> Tuple[Optional[Any], Optional[str], Optional[Exception]]:
-    """
-    Returns a tuple (client_instance, client_id, error).
-    If client_instance is None and error is not None, instantiation failed or no client discovered.
-    override_kwargs can be passed to the client constructor (e.g. api_key, api_secret,...).
-    It will also look for ENV VARs (COINBASE_API_KEY, COINBASE_API_SECRET, COINBASE_PASSPHRASE) as default.
-    """
-    ClientClass, client_identifier = get_coinbase_client_class()
-    if ClientClass is None:
-        return None, None, None
-
-    # collect common env var names; keep optional
-    env_kwargs = {}
-    if "api_key" in ClientClass.__init__.__code__.co_varnames:
-        # best-effort hint; we still pass whatever we have
-        pass
-    # standard env names (optional)
-    for k in ("COINBASE_API_KEY", "COINBASE_API_SECRET", "COINBASE_PASSPHRASE", "COINBASE_API_PASSPHRASE", "COINBASE_TOKEN"):
-        if k in os.environ:
-            env_key = k.lower()
-            env_kwargs[env_key] = os.environ[k]
-
-    # merge override_kwargs -> env_kwargs -> {} (override wins)
-    # but keep names consistent: user likely passes api_key/api_secret -> use those.
-    final_kwargs = {}
-    final_kwargs.update(env_kwargs)
-    final_kwargs.update(override_kwargs)
-
+for mod_name, attr in CANDIDATES:
+    attempt = {"module": mod_name, "spec": None, "imported": False, "selected_attr": None, "error": None}
     try:
-        instance = ClientClass(**final_kwargs) if final_kwargs else ClientClass()
-        log.info("Instantiated Coinbase client from %s", client_identifier)
-        return instance, client_identifier, None
+        spec = importlib.util.find_spec(mod_name)
+        attempt["spec"] = None if spec is None else {"name": spec.name, "origin": getattr(spec, "origin", None)}
+        if spec is None:
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.debug("Spec not found for %s", mod_name)
+            continue
+        m = importlib.import_module(mod_name)
+        attempt["imported"] = True
+        # if exact attr exists
+        if hasattr(m, attr):
+            CLIENT_CLASS = getattr(m, attr)
+            CLIENT_MODULE = mod_name
+            attempt["selected_attr"] = attr
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.info("Found %s in %s", attr, mod_name)
+            break
+        # else try to find a likely client attr
+        cand, cand_name = find_likely_client_in_module(m)
+        if cand:
+            CLIENT_CLASS = cand
+            CLIENT_MODULE = f"{mod_name}.{cand_name}"
+            attempt["selected_attr"] = cand_name
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.info("Auto-selected client-like attribute %s from %s", cand_name, mod_name)
+            break
+        else:
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.debug("%s imported but no client-like attribute found", mod_name)
     except Exception as e:
-        log.exception("Failed to instantiate Coinbase client %s: %s", client_identifier, e)
-        return None, client_identifier, e
+        attempt["error"] = repr(e)
+        DISCOVERY_DEBUG["attempts"].append(attempt)
+        log.debug("Import attempt failed for %s: %s", mod_name, repr(e))
+
+
+if CLIENT_CLASS is None:
+    log.warning("No Coinbase client class found among candidates. Running in diagnostic mode.")
+else:
+    log.info("Using Coinbase client %s from module %s",
+             getattr(CLIENT_CLASS, "__name__", str(CLIENT_CLASS)), CLIENT_MODULE)
+
+
+def instantiate_client(**kwargs) -> Tuple[Optional[Any], dict]:
+    """
+    Try to instantiate the discovered client class with several common constructor signatures.
+
+    Returns (instance_or_None, info_dict).
+    info_dict contains 'attempts' list and 'success' boolean.
+    """
+    info = {"attempts": [], "success": False}
+    if CLIENT_CLASS is None:
+        info["error"] = "No CLIENT_CLASS discovered"
+        return None, info
+
+    # common constructor kw names to try (ordered by likelihood)
+    tries = [
+        {"api_key": kwargs.get("api_key"), "api_secret": kwargs.get("api_secret")},
+        {"api_key": kwargs.get("key"), "api_secret": kwargs.get("secret")},
+        {"key": kwargs.get("key"), "secret": kwargs.get("secret")},
+        {"api_key": kwargs.get("api_key")},  # some libs only need key + env/other
+        {},  # try no-arg constructor
+    ]
+
+    # also allow passing through full kwargs if user passed them explicitly
+    if kwargs:
+        tries.insert(0, kwargs)
+
+    for t in tries:
+        # filter out None values so we don't pass api_key=None
+        kw = {k: v for k, v in (t or {}).items() if v is not None}
+        attempt_info = {"kwargs": kw, "error": None}
+        try:
+            inst = CLIENT_CLASS(**kw) if kw else CLIENT_CLASS()
+            attempt_info["instance_repr"] = repr(inst)[:400]
+            info["attempts"].append(attempt_info)
+            info["success"] = True
+            return inst, info
+        except TypeError as te:
+            attempt_info["error"] = f"TypeError: {repr(te)}"
+            info["attempts"].append(attempt_info)
+        except Exception as e:
+            attempt_info["error"] = repr(e)
+            info["attempts"].append(attempt_info)
+
+    info["success"] = False
+    return None, info
