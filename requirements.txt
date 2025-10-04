@@ -17,3 +17,9 @@ coinbase-advanced-py==1.8.2
 
 # Scientific / numeric library
 numpy==2.3.3
+
+fastapi==0.109.0
+uvicorn==0.25.0
+python-dotenv==1.1.1
+coinbase-advanced-py==1.8.2
+numpy==2.3.3
