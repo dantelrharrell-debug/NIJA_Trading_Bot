@@ -1,75 +1,65 @@
-import os
-import time
+# main.py (example)
 import logging
-from dotenv import load_dotenv
+import os
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-# Load environment variables
-load_dotenv()
+from coinbase_loader import get_coinbase_client, get_coinbase_client_class
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
-# Coinbase client import
-try:
-    from coinbase_advanced_py import Client
-    logging.info("✅ Coinbase client module loaded")
-except ModuleNotFoundError:
-    logging.error("❌ Coinbase client module NOT FOUND")
-    raise
+app = FastAPI(title="NIJA Trading Bot - diagnostic")
 
-# Initialize client
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+# Try to get a client instance (safe)
+client_instance, client_identifier, client_error = get_coinbase_client()
 
-client = None
-try:
-    client = Client(API_KEY, API_SECRET)
-    logging.info("✅ Coinbase client initialized successfully")
-except Exception as e:
-    logging.error(f"❌ Failed to initialize Coinbase client: {e}")
-
-# Trading configuration
-TRADING_PAIRS = ["BTC-USD", "ETH-USD", "LTC-USD"]
-ALLOCATION = 100  # USD per trade, can be adjusted
-TRADE_INTERVAL = 60  # seconds between checks
-
-# Safe order execution
-def place_order(symbol, side, amount):
-    if not client:
-        logging.warning("Client not initialized. Skipping order.")
-        return
-    try:
-        logging.info(f"Placing {side} order for {symbol} amount {amount}")
-        order = client.place_order(
-            product_id=symbol,
-            side=side,
-            order_type='market',
-            funds=str(amount)
-        )
-        logging.info(f"✅ Order executed: {order}")
-    except Exception as e:
-        logging.error(f"❌ Failed to place order: {e}")
-
-# Simple example strategy (can be replaced with real signals)
-def trading_strategy(symbol):
-    # Dummy strategy: Buy on even minutes, sell on odd
-    minute = int(time.time() / 60)
-    if minute % 2 == 0:
-        return "buy"
+if client_instance:
+    log.info("Coinbase client ready: %s", client_identifier)
+else:
+    if client_identifier is None:
+        log.warning("Coinbase client NOT FOUND. Running in diagnostic mode. Error: %s", client_error)
     else:
-        return "sell"
+        log.error("Coinbase client module found (%s) but failed to instantiate: %s", client_identifier, client_error)
 
-# Main trading loop
-def main():
-    logging.info("🚀 Starting autonomous trading bot")
-    while True:
-        for pair in TRADING_PAIRS:
-            side = trading_strategy(pair)
-            place_order(pair, side, ALLOCATION)
-        time.sleep(TRADE_INTERVAL)
+@app.get("/")
+async def root():
+    return {"status": "ok", "coinbase_client": bool(client_instance), "client_id": client_identifier}
 
-# Run the bot
-if __name__ == "__main__":
-    main()
+@app.get("/diag")
+async def diag():
+    # Give helpful diagnostic info the logs showed
+    return JSONResponse({
+        "coinbase_client_available": bool(client_instance),
+        "client_identifier": client_identifier,
+        "instantiation_error": repr(client_error) if client_error else None,
+        "env": {
+            "COINBASE_API_KEY": bool(os.environ.get("COINBASE_API_KEY")),
+            "COINBASE_API_SECRET": bool(os.environ.get("COINBASE_API_SECRET")),
+            "COINBASE_API_PASSPHRASE": bool(os.environ.get("COINBASE_API_PASSPHRASE")),
+        }
+    })
+
+# Example safe order function: DO NOT run unless client_instance is non-None and you've reviewed it.
+@app.post("/place_test_order")
+async def place_test_order():
+    if not client_instance:
+        return JSONResponse({"error": "no coinbase client available"}, status_code=500)
+    # WARNING: different client libraries have different APIs. This is only pseudocode:
+    try:
+        if hasattr(client_instance, "create_order"):
+            # coinbase-advanced-py style? You must adapt these fields to the library you use.
+            resp = client_instance.create_order(product_id="BTC-USD", side="buy", size="0.0001", type="market")
+            return {"result": "order_sent", "response": repr(resp)}
+        elif hasattr(client_instance, "buy") or hasattr(client_instance, "sell"):
+            # fallback: common names
+            if hasattr(client_instance, "buy"):
+                resp = client_instance.buy(amount="1", currency="USD")
+            else:
+                resp = client_instance.sell(amount="1", currency="USD")
+            return {"result": "order_sent", "response": repr(resp)}
+        else:
+            return {"error": "client present but API shape unknown; adapt code"}
+    except Exception as e:
+        log.exception("Order attempt failed")
+        return JSONResponse({"error": repr(e)}, status_code=500)
