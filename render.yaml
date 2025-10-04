@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: nija-trading-bot
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    pythonVersion: "3.12"
+    envVars:
+      - key: API_KEY
+        fromSecret: COINBASE_API_KEY
+      - key: API_SECRET
+        fromSecret: COINBASE_API_SECRET
