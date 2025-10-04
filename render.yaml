@@ -1,11 +1,11 @@
 services:
-  - type: worker       # run continuously in the background
+  - type: worker            # runs continuously in the background
     name: nija-trading-bot
     env: python
     region: oregon
     plan: starter
     buildCommand: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
-    startCommand: python3 main.py   # run your bot script
+    startCommand: python3 main.py
     envVars:
       - key: API_KEY
         fromSecret: COINBASE_API_KEY
