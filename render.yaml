@@ -1,11 +1,11 @@
 services:
-  - type: web
+  - type: worker   # <-- run continuously in the background
     name: nija-trading-bot
     env: python
     region: oregon
     plan: starter
     buildCommand: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
-    startCommand: python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: python3 main.py   # <-- run your bot script directly
     envVars:
       - key: API_KEY
         fromSecret: COINBASE_API_KEY
