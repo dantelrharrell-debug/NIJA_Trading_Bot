@@ -1,81 +1,75 @@
-# main.py (All-in-One Nija Trading Bot)
 import os
+import time
 import logging
-from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from coinbase_advanced_py import Client
-import uvicorn
+from dotenv import load_dotenv
 
-# ---------- Logging Setup ----------
+# Load environment variables
+load_dotenv()
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
-log = logging.getLogger("nija_trading_bot")
 
-# ---------- Load Environment ----------
+# Coinbase client import
+try:
+    from coinbase_advanced_py import Client
+    logging.info("✅ Coinbase client module loaded")
+except ModuleNotFoundError:
+    logging.error("❌ Coinbase client module NOT FOUND")
+    raise
+
+# Initialize client
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
-if not API_KEY or not API_SECRET:
-    log.error("API_KEY or API_SECRET not set in environment variables.")
-    raise EnvironmentError("API_KEY and API_SECRET must be set in .env")
-
-# ---------- Coinbase Client ----------
+client = None
 try:
-    coinbase_client = Client(API_KEY, API_SECRET)
-    log.info("Coinbase client successfully initialized.")
+    client = Client(API_KEY, API_SECRET)
+    logging.info("✅ Coinbase client initialized successfully")
 except Exception as e:
-    coinbase_client = None
-    log.error("Failed to initialize Coinbase client: %s", e)
-    raise e
+    logging.error(f"❌ Failed to initialize Coinbase client: {e}")
 
-# ---------- FastAPI Setup ----------
-app = FastAPI(title="NIJA Trading Bot Webhook")
+# Trading configuration
+TRADING_PAIRS = ["BTC-USD", "ETH-USD", "LTC-USD"]
+ALLOCATION = 100  # USD per trade, can be adjusted
+TRADE_INTERVAL = 60  # seconds between checks
 
-# ---------- Pydantic Model ----------
-class TradeSignal(BaseModel):
-    symbol: str
-    action: str  # "buy" or "sell"
-    size: float  # quantity to trade
-
-# ---------- Routes ----------
-@app.get("/")
-async def root():
-    return {"status": "NIJA Trading Bot is live!"}
-
-@app.post("/webhook")
-async def webhook(signal: TradeSignal, request: Request):
-    if coinbase_client is None:
-        log.warning("Webhook received but Coinbase client not initialized!")
-        return {"status": "error", "detail": "Coinbase client not initialized"}
-    
-    log.info("Webhook received: %s", signal.dict())
-    
+# Safe order execution
+def place_order(symbol, side, amount):
+    if not client:
+        logging.warning("Client not initialized. Skipping order.")
+        return
     try:
-        if signal.action.lower() == "buy":
-            order = coinbase_client.place_market_order(
-                product_id=f"{signal.symbol}-USD",
-                side="buy",
-                funds=str(signal.size)  # Using funds in USD
-            )
-            log.info("Buy order executed: %s", order)
-        elif signal.action.lower() == "sell":
-            order = coinbase_client.place_market_order(
-                product_id=f"{signal.symbol}-USD",
-                side="sell",
-                size=str(signal.size)  # Selling a crypto amount
-            )
-            log.info("Sell order executed: %s", order)
-        else:
-            log.warning("Unknown action: %s", signal.action)
-            return {"status": "error", "detail": "Unknown action"}
-        
-        return {"status": "success", "order": order}
+        logging.info(f"Placing {side} order for {symbol} amount {amount}")
+        order = client.place_order(
+            product_id=symbol,
+            side=side,
+            order_type='market',
+            funds=str(amount)
+        )
+        logging.info(f"✅ Order executed: {order}")
     except Exception as e:
-        log.error("Failed to execute trade: %s", e)
-        return {"status": "error", "detail": str(e)}
+        logging.error(f"❌ Failed to place order: {e}")
 
-# ---------- Uvicorn Entry ----------
+# Simple example strategy (can be replaced with real signals)
+def trading_strategy(symbol):
+    # Dummy strategy: Buy on even minutes, sell on odd
+    minute = int(time.time() / 60)
+    if minute % 2 == 0:
+        return "buy"
+    else:
+        return "sell"
+
+# Main trading loop
+def main():
+    logging.info("🚀 Starting autonomous trading bot")
+    while True:
+        for pair in TRADING_PAIRS:
+            side = trading_strategy(pair)
+            place_order(pair, side, ALLOCATION)
+        time.sleep(TRADE_INTERVAL)
+
+# Run the bot
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    main()
