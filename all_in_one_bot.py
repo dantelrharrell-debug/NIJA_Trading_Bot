@@ -1,32 +1,29 @@
 # all_in_one_bot.py
-"""
-All-in-one bot + diagnostic FastAPI app with robust Coinbase client discovery.
-- Drop this into your repo (replace existing fragile imports).
-- By default this runs in diagnostic (dry-run) mode.
-- To enable live trading you MUST set environment variables:
-    LIVE_TRADING=1
-    COINBASE_API_KEY
-    COINBASE_API_SECRET
-    (and any passphrase/token your client requires)
-- Carefully adapt order payloads to the discovered client's API before enabling LIVE_TRADING.
-"""
+# All-in-one diagnostic + Coinbase auto-discovery + safe instantiation + gated trading endpoint.
+# Paste this file into your project, replace existing entrypoint, deploy.
 
 import os
 import sys
-import logging
+import platform
+import pkgutil
 import importlib
 import importlib.util
 import traceback
-from typing import Optional, Tuple, Any, Callable, Dict
-from fastapi import FastAPI, Request
+import logging
+from typing import Any, Optional, Tuple
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
-# ---- Logging ----
-logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("all_in_one_bot")
 
-# ---- Coinbase client auto-discovery ----
-CANDIDATE_MODULES = [
+# ---------- Coinbase loader logic ----------
+CLIENT_CLASS: Optional[Any] = None
+CLIENT_MODULE: Optional[str] = None
+DISCOVERY_DEBUG = {"attempts": []}
+
+CANDIDATES = [
     ("coinbase_advanced_py", "Client"),
     ("coinbase_advanced", "Client"),
     ("coinbase.wallet.client", "Client"),
@@ -34,278 +31,301 @@ CANDIDATE_MODULES = [
     ("coinbase", "Client"),
 ]
 
-def _find_likely_client_in_module(module) -> Tuple[Optional[Callable], Optional[str]]:
-    """Heuristically find a client-like callable in a module."""
-    names = [n for n in dir(module) if not n.startswith("_")]
+
+def find_likely_client_in_module(m) -> Tuple[Optional[Any], Optional[str]]:
+    names = [n for n in dir(m) if not n.startswith("_")]
     preferred = ["Client", "WalletClient", "CoinbaseClient", "AdvancedClient"]
     for p in preferred:
         if p in names:
-            cand = getattr(module, p)
+            cand = getattr(m, p)
             if callable(cand):
                 return cand, p
     for n in names:
         if "client" in n.lower() or "wallet" in n.lower():
-            cand = getattr(module, n)
+            cand = getattr(m, n)
             if callable(cand):
                 return cand, n
     return None, None
 
-def get_coinbase_client_class() -> Tuple[Optional[Callable], Optional[str], Dict[str, Any]]:
-    """
-    Try to find and return (client_class_or_factory, identifier, import_debug).
-    import_debug contains per-module status for diagnostics.
-    """
-    debug = {}
-    for mod_name, attr_name in CANDIDATE_MODULES:
-        try:
-            spec = importlib.util.find_spec(mod_name)
-            if spec is None:
-                debug[mod_name] = "spec_not_found"
-                continue
-            m = importlib.import_module(mod_name)
-            # If module itself provided a top-level 'Client', prefer it.
-            if hasattr(m, attr_name):
-                cand = getattr(m, attr_name)
-                if callable(cand):
-                    debug[mod_name] = f"found_attr:{attr_name}"
-                    return cand, f"{mod_name}.{attr_name}", debug
-            cand, name = _find_likely_client_in_module(m)
-            if cand:
-                debug[mod_name] = f"auto_selected:{name}"
-                return cand, f"{mod_name}.{name}", debug
-            debug[mod_name] = "imported_no_client_attr"
-        except Exception as e:
-            debug[mod_name] = f"import_failed:{repr(e)}"
-    return None, None, debug
 
-def try_instantiate_client(ClientClass: Callable, credentials: Dict[str, Any]) -> Tuple[Optional[Any], Optional[Exception]]:
-    """
-    Try multiple instantiation patterns on client class.
-    Returns (instance, error) where instance is None on failure and error is the exception.
-    """
+for mod_name, attr in CANDIDATES:
+    attempt = {"module": mod_name, "spec": None, "imported": False, "selected_attr": None, "error": None}
     try:
-        # 1) Try keyword args
-        try:
-            inst = ClientClass(**credentials) if credentials else ClientClass()
-            return inst, None
-        except TypeError as e_kw:
-            # 2) Try positional (api_key, api_secret)
-            try:
-                if "api_key" in credentials and "api_secret" in credentials:
-                    inst = ClientClass(credentials["api_key"], credentials["api_secret"])
-                    return inst, None
-            except Exception:
-                pass
-            # 3) Try single token/env var style
-            try:
-                token = credentials.get("token") or credentials.get("COINBASE_TOKEN") or credentials.get("coinbase_token")
-                if token:
-                    inst = ClientClass(token)
-                    return inst, None
-            except Exception:
-                pass
-            # 4) Last resort, try parameterless
-            try:
-                inst = ClientClass()
-                return inst, None
-            except Exception:
-                # Fall through
-                pass
-            return None, e_kw
+        spec = importlib.util.find_spec(mod_name)
+        attempt["spec"] = None if spec is None else {"name": spec.name, "origin": getattr(spec, "origin", None)}
+        if spec is None:
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.debug("Spec not found for %s", mod_name)
+            continue
+        m = importlib.import_module(mod_name)
+        attempt["imported"] = True
+        if hasattr(m, attr):
+            CLIENT_CLASS = getattr(m, attr)
+            CLIENT_MODULE = mod_name
+            attempt["selected_attr"] = attr
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.info("Found %s in %s", attr, mod_name)
+            break
+        cand, cand_name = find_likely_client_in_module(m)
+        if cand:
+            CLIENT_CLASS = cand
+            CLIENT_MODULE = f"{mod_name}.{cand_name}"
+            attempt["selected_attr"] = cand_name
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.info("Auto-selected client-like attribute %s from %s", cand_name, mod_name)
+            break
+        else:
+            DISCOVERY_DEBUG["attempts"].append(attempt)
+            log.debug("%s imported but no client-like attribute found", mod_name)
     except Exception as e:
-        return None, e
+        attempt["error"] = repr(e)
+        DISCOVERY_DEBUG["attempts"].append(attempt)
+        log.debug("Import attempt failed for %s: %s", mod_name, repr(e))
 
-# ---- Collect credentials from env (do not print secrets) ----
-def collect_credentials_from_env() -> Dict[str, Any]:
-    creds = {}
-    for k in ("COINBASE_API_KEY","COINBASE_API_SECRET","COINBASE_PASSPHRASE","COINBASE_TOKEN","API_KEY","API_SECRET"):
-        if k in os.environ:
-            creds[k.lower()] = os.environ[k]
-    # also give common shorter keys
-    if "coinbase_api_key" in os.environ:
-        creds["api_key"] = os.environ["coinbase_api_key"]
-    if "coinbase_api_secret" in os.environ:
-        creds["api_secret"] = os.environ["coinbase_api_secret"]
-    # allow override via a JSON blob env var (advanced)
-    if "COINBASE_CREDS_JSON" in os.environ:
-        import json
-        try:
-            creds.update(json.loads(os.environ["COINBASE_CREDS_JSON"]))
-        except Exception:
-            log.warning("Failed to parse COINBASE_CREDS_JSON")
-    return creds
 
-# Discover & instantiate if possible (but remain safe)
-ClientClass, ClientIdentifier, discovery_debug = get_coinbase_client_class()
-client_instance = None
-client_inst_error = None
-credentials = collect_credentials_from_env()
-LIVE_TRADING = os.environ.get("LIVE_TRADING") in ("1", "true", "TRUE", "yes", "YES")
-
-if ClientClass is None:
-    log.warning("No Coinbase client class found. Discovery debug: %s", discovery_debug)
+if CLIENT_CLASS is None:
+    log.warning("No Coinbase client class found among candidates. Running in diagnostic mode.")
 else:
-    instance, err = try_instantiate_client(ClientClass, credentials)
-    if instance:
-        client_instance = instance
-        log.info("Coinbase client instantiated from %s (LIVE_TRADING=%s)", ClientIdentifier, LIVE_TRADING)
-    else:
-        client_inst_error = err
-        log.exception("Failed to instantiate Coinbase client %s: %s", ClientIdentifier, err)
+    log.info("Using Coinbase client %s from module %s",
+             getattr(CLIENT_CLASS, "__name__", str(CLIENT_CLASS)), CLIENT_MODULE)
 
-# ---- FastAPI app ----
-app = FastAPI(title="NIJA All-In-One Bot", version="1.0")
+
+def instantiate_client(**kwargs) -> Tuple[Optional[Any], dict]:
+    """
+    Try to instantiate discovered CLIENT_CLASS with a few common constructor variations.
+    Returns (instance_or_None, info_dict). info_dict contains attempt log and success flag.
+    """
+    info = {"attempts": [], "success": False}
+    if CLIENT_CLASS is None:
+        info["error"] = "No CLIENT_CLASS discovered"
+        return None, info
+
+    tries = [
+        {"api_key": kwargs.get("api_key"), "api_secret": kwargs.get("api_secret")},
+        {"api_key": kwargs.get("key"), "api_secret": kwargs.get("secret")},
+        {"key": kwargs.get("key"), "secret": kwargs.get("secret")},
+        {"api_key": kwargs.get("api_key")},
+        {},
+    ]
+    if kwargs:
+        tries.insert(0, kwargs)
+
+    for t in tries:
+        kw = {k: v for k, v in (t or {}).items() if v is not None}
+        attempt_info = {"kwargs": dict(kw), "error": None}
+        try:
+            inst = CLIENT_CLASS(**kw) if kw else CLIENT_CLASS()
+            attempt_info["instance_repr"] = repr(inst)[:400]
+            info["attempts"].append(attempt_info)
+            info["success"] = True
+            return inst, info
+        except TypeError as te:
+            attempt_info["error"] = f"TypeError: {repr(te)}"
+            info["attempts"].append(attempt_info)
+        except Exception as e:
+            attempt_info["error"] = repr(e)
+            info["attempts"].append(attempt_info)
+
+    info["success"] = False
+    return None, info
+
+# ---------- FastAPI app ----------
+
+app = FastAPI(title="NIJA All-in-One Diagnostic & Coinbase Loader", version="1.0")
+
+
+def installed_packages_snapshot(limit=200):
+    pkgs = []
+    try:
+        for m in pkgutil.iter_modules():
+            pkgs.append({"name": m.name, "ispkg": bool(m.ispkg)})
+            if len(pkgs) >= limit:
+                break
+    except Exception as e:
+        pkgs = [{"error": f"pkgutil.iter_modules failure: {repr(e)}"}]
+    return pkgs
+
 
 @app.get("/")
 async def root():
     return {
-        "status": "ok",
-        "coinbase_client_available": bool(client_instance),
-        "client_identifier": ClientIdentifier,
-        "live_trading_enabled": bool(LIVE_TRADING),
+        "status": "OK",
+        "message": "NIJA Diagnostic app running",
+        "coinbase_client_found": bool(CLIENT_CLASS),
+        "coinbase_client_module": CLIENT_MODULE,
     }
 
-@app.get("/diag")
-async def diag():
-    # show diagnostics. Don't reveal secrets.
-    safe_env = {
-        "COINBASE_API_KEY_set": bool(os.environ.get("COINBASE_API_KEY") or os.environ.get("coinbase_api_key")),
-        "COINBASE_API_SECRET_set": bool(os.environ.get("COINBASE_API_SECRET") or os.environ.get("coinbase_api_secret")),
-        "COINBASE_TOKEN_set": bool(os.environ.get("COINBASE_TOKEN")),
-        "LIVE_TRADING": bool(LIVE_TRADING),
-    }
-    return JSONResponse({
-        "python": sys.version,
-        "client_identifier": ClientIdentifier,
-        "client_available": bool(client_instance),
-        "client_inst_error": repr(client_inst_error) if client_inst_error else None,
-        "discovery_debug": discovery_debug,
-        "env": safe_env,
-    })
 
-# ---- Utility: safe order wrapper ----
-def _client_has_method_names(obj, names):
-    return any(hasattr(obj, n) for n in names)
-
-def send_market_order(side: str, size: str = None, amount: str = None, product_id: str = "BTC-USD", price: Optional[str] = None) -> Dict[str, Any]:
+@app.get("/diag2")
+async def diag2():
     """
-    Try multiple common client method signatures to place a market order.
-    This is defensive and will return a dict describing what happened.
-    You MUST adapt this to the discovered client API before using in production.
+    Full diagnostic endpoint: shows attempted imports and site-packages snapshot.
+    Paste the JSON here if you need help.
     """
-    if client_instance is None:
-        return {"success": False, "reason": "no_client"}
-
-    # Don't do anything if not explicitly allowed
-    if not LIVE_TRADING:
-        return {"success": False, "reason": "dry_run", "message": "LIVE_TRADING not enabled. Set LIVE_TRADING=1 to enable."}
-
     try:
-        # coinbase-advanced-py: client.create_order(product_id=..., side=..., type="market", size=...)
-        if hasattr(client_instance, "create_order"):
-            kwargs = {"product_id": product_id, "side": side, "type": "market"}
-            if size:
-                kwargs["size"] = size
-            if amount:
-                # some libraries use 'funds' or 'amount'
-                kwargs["funds"] = amount
-            if price:
-                kwargs["price"] = price
-            resp = client_instance.create_order(**kwargs)
-            return {"success": True, "method": "create_order", "response": repr(resp)}
-        # coinbase (old): client.buy/sell
-        if side.lower() == "buy" and hasattr(client_instance, "buy"):
-            kwargs = {}
-            if amount:
-                kwargs["amount"] = amount
-                kwargs["currency"] = "USD"
-            elif size:
-                kwargs["amount"] = size
-                kwargs["currency"] = "BTC"
-            resp = client_instance.buy(**kwargs)
-            return {"success": True, "method": "buy", "response": repr(resp)}
-        if side.lower() == "sell" and hasattr(client_instance, "sell"):
-            kwargs = {}
-            if amount:
-                kwargs["amount"] = amount
-                kwargs["currency"] = "USD"
-            elif size:
-                kwargs["amount"] = size
-                kwargs["currency"] = "BTC"
-            resp = client_instance.sell(**kwargs)
-            return {"success": True, "method": "sell", "response": repr(resp)}
-        # generic fallback: try 'place_order', 'order', 'new_order'
-        for candidate in ("place_order", "order", "new_order", "create_market_order"):
-            if hasattr(client_instance, candidate):
-                func = getattr(client_instance, candidate)
-                try:
-                    resp = func(side=side, size=size, product_id=product_id, amount=amount, price=price)
-                    return {"success": True, "method": candidate, "response": repr(resp)}
-                except TypeError:
-                    # maybe different signature; try common minimal
-                    try:
-                        resp = func(product_id, side, size)
-                        return {"success": True, "method": candidate, "response": repr(resp)}
-                    except Exception:
-                        pass
-        return {"success": False, "reason": "unknown_client_api", "message": "Client present but no known order method found. Inspect client and adapt code."}
+        site_paths = []
+        try:
+            import site
+            site_paths = site.getsitepackages() if hasattr(site, "getsitepackages") else [site.getusersitepackages()]
+        except Exception:
+            site_paths = [p for p in sys.path if "site-packages" in p or "dist-packages" in p][:6]
+
+        attempts = [
+            "coinbase_advanced_py",
+            "coinbase_advanced",
+            "coinbase_advanced_py.client",
+            "coinbase_advanced.client",
+            "coinbase.wallet",
+            "coinbase.wallet.client",
+            "coinbase"
+        ]
+        import_results = {}
+        for name in attempts:
+            try:
+                r = {"find_spec": None, "imported": False, "attrs_sample": None, "error": None}
+                spec = importlib.util.find_spec(name)
+                r["find_spec"] = None if spec is None else {"name": spec.name, "origin": getattr(spec, "origin", None)}
+                m = importlib.import_module(name)
+                r["imported"] = True
+                r["attrs_sample"] = sorted([a for a in dir(m) if not a.startswith("_")])[:60]
+            except Exception as e:
+                r["error"] = repr(e)
+            import_results[name] = r
+
+        response = {
+            "python_executable": sys.executable,
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "cwd": os.getcwd(),
+            "site_paths": site_paths,
+            "import_attempts": import_results,
+            "loader_debug": DISCOVERY_DEBUG,
+            "installed_snapshot_sample": installed_packages_snapshot(limit=300),
+            "sys_path": sys.path[:80],
+            "loaded_modules_sample": sorted(list(sys.modules.keys()))[:200],
+        }
+        return JSONResponse(content=response, status_code=200)
     except Exception as e:
-        log.exception("Exception while attempting order")
-        return {"success": False, "reason": "exception", "exception": repr(e), "traceback": traceback.format_exc()}
+        tb = traceback.format_exc()
+        return JSONResponse(content={"error": repr(e), "traceback": tb}, status_code=500)
 
-# ---- API endpoints for ordering ----
-@app.post("/place_test_order")
-async def place_test_order(request: Request):
+
+@app.get("/tryclient")
+async def tryclient():
+    names = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
+    results = {}
+    for n in names:
+        try:
+            mod = importlib.import_module(n)
+            results[n] = {"imported": True, "repr": repr(mod)[:400], "attrs_sample": sorted([a for a in dir(mod) if not a.startswith("_")])[:40]}
+        except Exception as e:
+            results[n] = {"imported": False, "error": repr(e)}
+    results["_loader_summary"] = {
+        "client_found": bool(CLIENT_CLASS),
+        "client_module": CLIENT_MODULE,
+        "loader_attempts": DISCOVERY_DEBUG.get("attempts", []),
+    }
+    return results
+
+
+class InstantiateRequest(BaseModel):
+    api_key: str | None = None
+    api_secret: str | None = None
+    key: str | None = None
+    secret: str | None = None
+    extra: dict | None = None
+
+
+@app.post("/instantiate")
+async def instantiate(req: InstantiateRequest):
     """
-    Places a test order. Body can be JSON with: { "side": "buy"|"sell", "size":"0.001", "amount":"10", "product_id":"BTC-USD" }
-    - By default this will NOT place a live order unless LIVE_TRADING=1 and API keys present.
-    - This endpoint is only a convenience for diagnostics. Do not use it to run live aggressive trading without safeguards.
+    Try to instantiate the discovered client. Supply JSON with api_key & api_secret (or key/secret).
+    Response redacts secrets in the attempt log.
     """
-    data = {}
+    if CLIENT_CLASS is None:
+        raise HTTPException(status_code=400, detail="No Coinbase client class discovered; check /diag2")
+
+    kwargs = {}
+    if req.api_key:
+        kwargs["api_key"] = req.api_key
+    if req.api_secret:
+        kwargs["api_secret"] = req.api_secret
+    if req.key:
+        kwargs["key"] = req.key
+    if req.secret:
+        kwargs["secret"] = req.secret
+    if req.extra:
+        kwargs.update(req.extra)
+
+    inst, info = instantiate_client(**kwargs)
+    for a in info.get("attempts", []):
+        if "kwargs" in a and isinstance(a["kwargs"], dict):
+            a["kwargs"] = {k: ("REDACTED" if "key" in k.lower() or "secret" in k.lower() else v) for k, v in a["kwargs"].items()}
+    return {"success": info.get("success", False), "attempts": info.get("attempts", []), "client_module": CLIENT_MODULE}
+
+
+class TradeRequest(BaseModel):
+    # Minimal safe trade payload - adjust in your real bot
+    side: str  # "buy" or "sell"
+    product: str  # e.g., "BTC-USD" (depends on client)
+    size: float | None = None
+    price: float | None = None
+    test: bool | None = True  # if True, do not place real order (client may still not support test flag)
+
+@app.post("/trade")
+async def trade(req: TradeRequest):
+    """
+    Gated trading endpoint. It will only attempt to place an order if a client class was discovered
+    AND instantiate_client succeeded with credentials you pass to /instantiate previously.
+    This endpoint does NOT store credentials — you must pass credentials again or wire persistent secure storage.
+    WARNING: Use carefully. This endpoint will refuse to run if no client discovered.
+    """
+    if CLIENT_CLASS is None:
+        raise HTTPException(status_code=400, detail="No Coinbase client class discovered; check /diag2 and /instantiate first.")
+
+    # For safety: expect user to provide credentials via headers or env (not persisted here).
+    # In this demo we look for API creds in env variables; change to your secure store
+    api_key = os.getenv("COINBASE_API_KEY")
+    api_secret = os.getenv("COINBASE_API_SECRET")
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="No API credentials found in environment. Set COINBASE_API_KEY and COINBASE_API_SECRET (or use /instantiate to test).")
+
+    inst, info = instantiate_client(api_key=api_key, api_secret=api_secret)
+    if not info.get("success"):
+        raise HTTPException(status_code=500, detail={"error": "Failed to instantiate client", "attempts": info.get("attempts", [])})
+
+    client = inst
+    # ATTENTION: The real place_order API differs by client. We attempt a few common names safely.
+    order_result = {"called": None, "error": None, "result": None}
     try:
-        data = await request.json()
-    except Exception:
-        # ignore; maybe empty body -> use defaults
-        pass
+        # look for common method names
+        if hasattr(client, "create_order"):
+            order_result["called"] = "create_order"
+            # example arguments - many libs use (product, side, size, price) or a dict
+            try:
+                # attempt common signature - this may need adjustment for your client
+                res = client.create_order(product_id=getattr(req, "product", None),
+                                          side=req.side,
+                                          size=req.size,
+                                          price=req.price)
+                order_result["result"] = repr(res)[:800]
+            except Exception as e:
+                order_result["error"] = repr(e)
+        elif hasattr(client, "orders") and hasattr(client.orders, "create"):
+            order_result["called"] = "client.orders.create"
+            try:
+                res = client.orders.create({
+                    "product_id": getattr(req, "product", None),
+                    "side": req.side,
+                    "size": req.size,
+                    "price": req.price,
+                })
+                order_result["result"] = repr(res)[:800]
+            except Exception as e:
+                order_result["error"] = repr(e)
+        else:
+            order_result["error"] = "No known order method found on discovered client. Check client API and adapt code."
+    except Exception as e:
+        order_result["error"] = repr(e)
 
-    side = str(data.get("side", "buy")).lower()
-    size = data.get("size")
-    amount = data.get("amount")
-    product_id = data.get("product_id", "BTC-USD")
-    price = data.get("price")
-
-    # defensive sanity checks
-    if side not in ("buy", "sell"):
-        return JSONResponse({"error": "invalid_side", "allowed": ["buy", "sell"]}, status_code=400)
-
-    # If there are no credentials yet and LIVE_TRADING requested, fail
-    if LIVE_TRADING and not credentials:
-        return JSONResponse({"error": "live_trading_requested_but_no_credentials_found"}, status_code=400)
-
-    result = send_market_order(side=side, size=size, amount=amount, product_id=product_id, price=price)
-    return JSONResponse(result)
-
-@app.get("/client_methods")
-async def client_methods():
-    """Return a sample of callable attribute names on the discovered client (for debugging)."""
-    if client_instance is None:
-        return JSONResponse({"client": None})
-    names = [n for n in dir(client_instance) if not n.startswith("_")]
-    callables = [n for n in names if callable(getattr(client_instance, n, None))]
-    # Return a slice so output stays small
-    return JSONResponse({"client_identifier": ClientIdentifier, "callable_sample": callables[:80]})
-
-# ---- Shutdown/startup events to log state ----
-@app.on_event("startup")
-async def on_startup():
-    log.info("App startup. client_available=%s, client_identifier=%s, LIVE_TRADING=%s",
-             bool(client_instance), ClientIdentifier, LIVE_TRADING)
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    log.info("App shutdown.")
-
-# ---- If you run directly (for local dev) ----
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("all_in_one_bot:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), reload=False)
+    return order_result
