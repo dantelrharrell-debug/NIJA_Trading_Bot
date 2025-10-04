@@ -1,10 +1,12 @@
 services:
-  - type: worker          # 'worker' runs in the background; use 'web' only for HTTP apps
+  - type: worker
     name: nija-trading-bot
     env: python
     region: oregon
     plan: starter
-    buildCommand: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
+    buildCommand: |
+      python3 -m pip install --upgrade pip
+      python3 -m pip install -r requirements.txt
     startCommand: python3 main.py
     envVars:
       - key: API_KEY
