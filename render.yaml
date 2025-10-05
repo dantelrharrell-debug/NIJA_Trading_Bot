@@ -1,10 +1,9 @@
 services:
-  - type: background
+  - type: background  # background if this is a bot, not a web server
     name: nija-trading-bot
     env: python
     region: oregon
     plan: starter
-    pythonVersion: "3.13"
     buildCommand: |
       python3 -m pip install --upgrade pip
       python3 -m pip install -r requirements.txt
@@ -14,3 +13,4 @@ services:
         fromSecret: COINBASE_API_KEY
       - key: API_SECRET
         fromSecret: COINBASE_API_SECRET
+    pythonVersion: "3.13"
