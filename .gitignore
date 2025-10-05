@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.env
+
+# Logs
+*.log
+
+# Virtual environments
+.venv/
+env/
+
+# Node.js dependencies (if used)
+node_modules/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
