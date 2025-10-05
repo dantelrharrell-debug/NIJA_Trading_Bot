@@ -20,3 +20,24 @@ while True:
     except Exception as e:
         print(f"⚠️ Trading error: {e}")
     time.sleep(10)
+
+import os
+from coinbase.wallet.client import Client
+
+# Load your API keys from environment
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+client = Client(API_KEY, API_SECRET)
+
+# Get BTC account
+btc_account = client.get_account('BTC-USD')
+
+# Test order (very tiny amount)
+try:
+    test_order = btc_account.buy(amount='0.000001', currency='BTC')  # Tiny amount to avoid risk
+    print("✅ Test order executed:")
+    print(test_order)
+except Exception as e:
+    print("❌ Test order failed:")
+    print(e)
