@@ -1,5 +1,5 @@
 services:
-  - type: background  # background if this is a bot, not a web server
+  - type: background
     name: nija-trading-bot
     env: python
     region: oregon
