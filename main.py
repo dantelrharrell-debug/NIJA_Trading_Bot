@@ -41,3 +41,9 @@ try:
 except Exception as e:
     print("❌ Test order failed:")
     print(e)
+
+from fastapi import FastAPI
+from webhook_handler import router as webhook_router
+
+app = FastAPI()
+app.include_router(webhook_router)
