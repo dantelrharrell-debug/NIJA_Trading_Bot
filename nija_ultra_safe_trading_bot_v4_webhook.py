@@ -275,4 +275,41 @@ async def trade_symbol(symbol):
                         print(f"⚠️ {symbol} Exit failed:", e)
             
             # Generate new signal
-            signal = hf
+            signal = hf_micro_trade_signal(price_data)
+            risk_pct = MIN_PCT
+            signal_type = "HFMT"
+            if not signal:
+                signal, risk_pct = high_return_signal(price_data)
+                signal_type = "HighReturn"
+
+            if signal:
+                payload = make_order_payload(
+                    symbol, signal, account_balance, price, risk_pct, signal_type, dynamic_leverage
+                )
+                try:
+                    client.place_market_order(payload)
+                    open_trades.append(payload)
+                    log_trade(payload, "success", account_balance)
+                    print(f"✅ {symbol} | {signal_type} {signal} at ${price} size {payload['size']} | Leverage: {dynamic_leverage} | Balance: ${round(account_balance,2)}")
+                except Exception as e:
+                    log_trade(payload, "error", account_balance, 0, str(e))
+                    print(f"⚠️ {symbol} Trade failed:", e)
+
+            await asyncio.sleep(1)
+        except Exception as e:
+            print(f"⚠️ {symbol} Bot error:", e)
+            await asyncio.sleep(2)
+
+# -------------------
+# START MULTI-SYMBOL BOT + WEBHOOK SERVER
+# -------------------
+async def main():
+    tasks = [trade_symbol(sym) for sym in SYMBOLS]
+    await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
+    print("🚀 Nija Ultra Safe v4 + TradeView Webhook Bot Started!")
+    # Run FastAPI webhook in separate thread
+    threading.Thread(target=lambda: uvicorn.run(app, host="0.0.0.0", port=8000), daemon=True).start()
+    # Start async trading bot
+    asyncio.run(main())
