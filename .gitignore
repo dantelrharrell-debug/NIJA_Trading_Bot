@@ -11,7 +11,7 @@ __pycache__/
 .venv/
 env/
 
-# Node.js dependencies (if used)
+# Node.js dependencies
 node_modules/
 
 # OS Files
