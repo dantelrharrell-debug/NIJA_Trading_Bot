@@ -7,6 +7,7 @@ services:
     buildCommand: |
       python3 -m pip install --upgrade pip
       python3 -m pip install -r requirements.txt
+      python3 -m pip install coinbase-advanced-py==1.8.2
     startCommand: python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: API_KEY
