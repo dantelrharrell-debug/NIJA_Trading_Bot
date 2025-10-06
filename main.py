@@ -1,3 +1,17 @@
+import os
+from pyngrok import ngrok
+
+# Load the token from Replit secrets
+NGROK_TOKEN = os.getenv("NGROK_TOKEN")
+if not NGROK_TOKEN:
+    raise ValueError("❌ NGROK_TOKEN not set in Replit secrets!")
+
+# Set the auth token for pyngrok
+ngrok.set_auth_token(NGROK_TOKEN)
+
+# Start a tunnel on your bot's port (replace 5000 if needed)
+public_url = ngrok.connect(5000)
+print(f"🚀 ngrok tunnel running at {public_url}")
 # main.py
 import os
 import asyncio
