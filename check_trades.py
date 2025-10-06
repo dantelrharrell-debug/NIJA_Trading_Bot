@@ -10,6 +10,6 @@ API_SECRET = os.getenv("API_SECRET")
 client = cb.Client(API_KEY, API_SECRET)
 
 # Fetch recent trades
-recent_trades = client.get_recent_trades()  # or similar method in coinbase_advanced_py
+recent_trades = client.get_recent_trades()  # Make sure this method exists in coinbase_advanced_py
 print("Recent trades executed by the bot:")
 print(recent_trades)
