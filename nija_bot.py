@@ -1,157 +1,136 @@
-#!/usr/bin/env python3
 import os
 import time
 import pandas as pd
-import numpy as np
 from dotenv import load_dotenv
 import coinbase_advanced_py as cb
-import requests
 
 # =============================
-# Load API keys
+# Load environment variables
 # =============================
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-
 if not API_KEY or not API_SECRET:
     raise ValueError("❌ API_KEY or API_SECRET missing")
 
-# =============================
-# Initialize Coinbase client
-# =============================
 client = cb.Client(API_KEY, API_SECRET)
-print("✅ Coinbase client initialized")
+print("🚀 Coinbase client initialized")
 
 # =============================
-# Trading parameters
+# Bot settings
 # =============================
-MIN_POSITION = 0.02  # 2% of equity
-MAX_POSITION = 0.10  # 10% of equity
-SYMBOL = "BTC-USD"   # trading symbol
-TRADE_INTERVAL = 10  # seconds between checks
-CANDLE_INTERVAL = "1m"  # timeframe for indicators
-HISTORY_LIMIT = 100  # number of historical candles to fetch
-
-# =============================
-# Indicator calculations
-# =============================
-def fetch_candles(symbol, interval="1m", limit=100):
-    """Fetch historical candles from Coinbase"""
-    url = f"https://api.exchange.coinbase.com/products/{symbol}/candles"
-    params = {"granularity": 60, "limit": limit}  # 1m candles
-    try:
-        resp = requests.get(url, params=params)
-        data = resp.json()
-        df = pd.DataFrame(data, columns=["time", "low", "high", "open", "close", "volume"])
-        df.sort_values("time", inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        return df
-    except Exception as e:
-        print("❌ Failed to fetch candles:", e)
-        return pd.DataFrame()
-
-def vwap(df):
-    """Calculate VWAP"""
-    return (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
-
-def rsi(df, period=14):
-    """Calculate RSI"""
-    delta = df['close'].diff()
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.rolling(period).mean()
-    avg_loss = loss.rolling(period).mean()
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-def atr(df, period=14):
-    """Calculate ATR"""
-    high_low = df['high'] - df['low']
-    high_close = np.abs(df['high'] - df['close'].shift())
-    low_close = np.abs(df['low'] - df['close'].shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    return tr.rolling(period).mean()
+SYMBOLS = ["BTC-USD", "ETH-USD", "LTC-USD"]
+TRADE_INTERVAL = 60  # in seconds
+CANDLE_INTERVAL = "1m"  # 1-minute candles
+HISTORY_LIMIT = 50
+MIN_SIZE_PCT = 0.02
+MAX_SIZE_PCT = 0.10
+RSI_PERIOD = 14
+VWAP_PERIOD = 14
+open_positions = {symbol: [] for symbol in SYMBOLS}
 
 # =============================
-# Account & trade functions
+# Helper functions
 # =============================
-def get_balances():
-    balances = client.get_account_balances()
-    return balances
-
 def get_equity():
-    balances = get_balances()
-    total_equity = 0.0
-    for sym, info in balances.items():
-        try:
-            total_equity += float(info['available'])
-        except:
-            continue
-    return total_equity
+    balances = client.get_account_balances()
+    total = sum(float(b['available']) + float(b['hold']) for b in balances.values())
+    return total
 
 def calculate_position_size(equity):
-    """Return trade size between MIN_POSITION and MAX_POSITION of equity"""
-    size = equity * 0.05  # example: 5% of current equity
-    min_size = equity * MIN_POSITION
-    max_size = equity * MAX_POSITION
-    return max(min_size, min(size, max_size))
+    pct = max(MIN_SIZE_PCT, min(MAX_SIZE_PCT, equity/100))
+    return pct
+
+def fetch_candles(symbol, interval="1m", limit=50):
+    try:
+        candles = client.get_historical_prices(symbol, granularity=interval, limit=limit)
+        df = pd.DataFrame(candles)
+        df['close'] = df['close'].astype(float)
+        return df
+    except Exception as e:
+        print(f"❌ Error fetching candles for {symbol}:", e)
+        return pd.DataFrame()
+
+def compute_rsi(prices, period=14):
+    delta = prices.diff()
+    gain = delta.clip(lower=0)
+    loss = -1 * delta.clip(upper=0)
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
+    rs = avg_gain / (avg_loss + 1e-10)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def compute_vwap(df):
+    return (df['close'] * df['close']).cumsum() / df['close'].cumsum()
 
 def get_signal(df):
-    """Generate signal based on VWAP, RSI, ATR"""
-    df['vwap'] = vwap(df)
-    df['rsi'] = rsi(df)
-    df['atr'] = atr(df)
+    df['RSI'] = compute_rsi(df['close'], RSI_PERIOD)
+    df['VWAP'] = compute_vwap(df)
+    last = df.iloc[-1]
     
-    last_close = df['close'].iloc[-1]
-    last_vwap = df['vwap'].iloc[-1]
-    last_rsi = df['rsi'].iloc[-1]
+    if last['RSI'] < 30 and last['close'] < last['VWAP']:
+        return "buy", last['close']*0.99, last['close']*1.01  # stop-loss, take-profit
+    elif last['RSI'] > 70 and last['close'] > last['VWAP']:
+        return "sell", last['close']*1.01, last['close']*0.99
+    return None, None, None
 
-    # Basic signal logic:
-    if last_close > last_vwap and last_rsi < 70:
-        return "buy"
-    elif last_close < last_vwap and last_rsi > 30:
-        return "sell"
-    return None
-
-def place_trade(signal, size):
-    if signal not in ["buy", "sell"]:
-        return
+def place_trade(side, size, stop_loss=None, take_profit=None):
     try:
-        order = client.place_order(
-            symbol=SYMBOL,
-            side=signal,
-            type="market",
-            size=size
-        )
-        print(f"🚀 Placed {signal} order for {size} {SYMBOL}")
+        print(f"💰 Placing {side} trade: size={size}, SL={stop_loss}, TP={take_profit}")
+        order = client.place_order(symbol=symbol, side=side, size=size)
         return order
     except Exception as e:
-        print("❌ Order failed:", e)
+        print("❌ Error placing trade:", e)
+        return None
+
+def check_exit(position, current_price):
+    if position['side'] == 'buy' and current_price >= position.get('take_profit', 0):
+        print(f"✅ Take-profit hit for {position['symbol']}")
+        return True
+    if position['side'] == 'buy' and current_price <= position.get('stop_loss', 0):
+        print(f"⚠ Stop-loss hit for {position['symbol']}")
+        return True
+    if position['side'] == 'sell' and current_price <= position.get('take_profit', 0):
+        print(f"✅ Take-profit hit for {position['symbol']}")
+        return True
+    if position['side'] == 'sell' and current_price >= position.get('stop_loss', 0):
+        print(f"⚠ Stop-loss hit for {position['symbol']}")
+        return True
+    return False
 
 # =============================
-# Main loop
+# Main trading loop
 # =============================
 def main():
-    print("🔥 Starting real indicator-based trading loop...")
+    print("🔥 Starting multi-symbol aggressive bot...")
     while True:
         try:
             equity = get_equity()
             size = calculate_position_size(equity)
             
-            candles = fetch_candles(SYMBOL, interval=CANDLE_INTERVAL, limit=HISTORY_LIMIT)
-            if candles.empty:
-                print("⏸ No candle data, skipping...")
-                time.sleep(TRADE_INTERVAL)
-                continue
-            
-            signal = get_signal(candles)
-            if signal:
-                place_trade(signal, size)
-            else:
-                print("⏸ No trade signal")
-            
+            for symbol in SYMBOLS:
+                candles = fetch_candles(symbol, interval=CANDLE_INTERVAL, limit=HISTORY_LIMIT)
+                if candles.empty:
+                    continue
+                current_price = candles['close'].iloc[-1]
+
+                # Check open positions
+                for pos in open_positions[symbol][:]:
+                    if check_exit(pos, current_price):
+                        open_positions[symbol].remove(pos)
+
+                # New signal
+                signal, sl, tp = get_signal(candles)
+                if signal:
+                    position = place_trade(signal, size, stop_loss=sl, take_profit=tp)
+                    if position:
+                        open_positions[symbol].append(position)
+                else:
+                    print(f"⏸ No trade signal for {symbol}")
+
             time.sleep(TRADE_INTERVAL)
+
         except Exception as e:
             print("❌ Error in main loop:", e)
             time.sleep(5)
