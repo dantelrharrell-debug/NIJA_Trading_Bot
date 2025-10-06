@@ -1,10 +1,14 @@
+#!/usr/bin/env python3
 # nija_bot.py
 
 import os
 from dotenv import load_dotenv
 import coinbase_advanced_py as cb
+import time
 
+# =============================
 # Load API keys from .env
+# =============================
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
@@ -12,70 +16,47 @@ API_SECRET = os.getenv("API_SECRET")
 if not API_KEY or not API_SECRET:
     raise ValueError("❌ API_KEY or API_SECRET missing")
 
+# =============================
 # Initialize Coinbase client
+# =============================
 client = cb.Client(API_KEY, API_SECRET)
-
-# Test: print balances
-balances = client.get_account_balances()
-print(balances)
+print("✅ Coinbase client initialized")
 
 # =============================
-# Your trading logic goes below
+# Helper function: check balances
 # =============================
-# Example: place trades, check signals, etc.
-import os
-import json
-from flask import Flask, request
-from coinbase_advanced_py import Client
-from dotenv import load_dotenv
+def check_balances():
+    balances = client.get_account_balances()
+    print("💰 Current balances:")
+    for symbol, info in balances.items():
+        print(f"{symbol}: {info['available']} available, {info['hold']} hold")
+    return balances
 
-# Load environment variables
-load_dotenv()
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+# =============================
+# Example: main trading loop
+# =============================
+def main():
+    print("🚀 Starting trading bot loop...")
+    while True:
+        try:
+            balances = check_balances()
 
-if not API_KEY or not API_SECRET:
-    raise ValueError("❌ Missing Coinbase API_KEY or API_SECRET")
+            # =============================
+            # PLACE YOUR TRADING LOGIC HERE
+            # =============================
+            # Example placeholder:
+            # if some_condition:
+            #     client.place_order(symbol="BTC-USD", side="buy", type="market", size=0.01)
 
-# Initialize Coinbase client
-client = Client(API_KEY, API_SECRET)
-print("🚀 Coinbase Bot Initialized - Live Trading Active")
+            # Wait before next iteration (adjust for your strategy)
+            time.sleep(10)  # checks balances every 10 seconds
 
-# Flask app to receive TradingView webhooks
-app = Flask(__name__)
+        except Exception as e:
+            print("❌ Error:", e)
+            time.sleep(5)
 
-# Minimum order check
-MIN_USD_ORDER = 10  # adjust according to Coinbase minimums
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.json
-    print("📡 Received TradingView signal:", data)
-
-    try:
-        # Extract trading info from TradingView alert
-        symbol = data.get("symbol")  # e.g., BTC-USD
-        side = data.get("side")      # 'buy' or 'sell'
-        amount = float(data.get("amount", 0))  # USD amount to trade
-
-        if amount < MIN_USD_ORDER:
-            print(f"⚠️ Order below minimum (${MIN_USD_ORDER}), skipping.")
-            return "Order too small", 400
-
-        # Place live order on Coinbase
-        order = client.place_order(
-            product_id=symbol,
-            side=side,
-            order_type="market",
-            funds=amount  # amount in USD
-        )
-        print("✅ Order placed:", order)
-        return json.dumps({"status": "success", "order": order}), 200
-
-    except Exception as e:
-        print("❌ Error placing order:", e)
-        return json.dumps({"status": "error", "message": str(e)}), 500
-
-# Keep bot running 24/7
+# =============================
+# Run the bot
+# =============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+    main()
