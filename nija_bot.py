@@ -1,3 +1,28 @@
+# nija_bot.py
+
+import os
+from dotenv import load_dotenv
+import coinbase_advanced_py as cb
+
+# Load API keys from .env
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise ValueError("❌ API_KEY or API_SECRET missing")
+
+# Initialize Coinbase client
+client = cb.Client(API_KEY, API_SECRET)
+
+# Test: print balances
+balances = client.get_account_balances()
+print(balances)
+
+# =============================
+# Your trading logic goes below
+# =============================
+# Example: place trades, check signals, etc.
 import os
 import json
 from flask import Flask, request
