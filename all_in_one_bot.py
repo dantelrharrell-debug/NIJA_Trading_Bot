@@ -325,3 +325,4 @@ async def trade(req: TradeReq):
     except Exception as e:
         result["error"] = repr(e)
     return result
+
