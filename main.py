@@ -1,4 +1,20 @@
 import os
+import coinbase_advanced_py as cb
+
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
+
+client = cb.Client(API_KEY, API_SECRET)
+
+print("🚀 Trading bot started")
+
+# Example: check balances
+balances = client.get_account_balances()
+print(balances)
+import os
 from pyngrok import ngrok
 
 # Load the token from Replit secrets
