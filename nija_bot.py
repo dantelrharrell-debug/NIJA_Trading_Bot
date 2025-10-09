@@ -1,3 +1,13 @@
+import importlib, subprocess, sys
+
+package = "coinbase_advanced_py"
+try:
+    import coinbase_advanced_py as cb
+except Exception:
+    print(f"⏳ {package} not present — attempting pip install...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "coinbase-advanced-py==1.8.2"])
+    importlib.invalidate_caches()
+    import coinbase_advanced_py as cb
 import os
 import time
 import pandas as pd
