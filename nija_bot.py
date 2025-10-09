@@ -10,7 +10,7 @@ if VENDOR_DIR not in sys.path:
     print(f"✅ Added vendor folder to sys.path: {VENDOR_DIR}")
 
 # -----------------------------
-# 2️⃣ Import coinbase_advanced_py from vendor
+# 2️⃣ Import coinbase_advanced_py
 # -----------------------------
 try:
     import coinbase_advanced_py as cb
@@ -23,7 +23,6 @@ except ModuleNotFoundError:
 # -----------------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-
 if not API_KEY or not API_SECRET:
     raise SystemExit("❌ Missing API_KEY or API_SECRET environment variables")
 
@@ -45,5 +44,4 @@ except Exception as e:
 # -----------------------------
 # 6️⃣ Your bot logic continues here
 # -----------------------------
-# Example placeholder:
 # client.place_order(...)
