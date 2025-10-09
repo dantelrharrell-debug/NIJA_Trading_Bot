@@ -63,21 +63,3 @@ if not API_KEY or not API_SECRET:
     raise SystemExit("❌ Missing API_KEY or API_SECRET environment variables")
 
 # -----------------------------
-# 4️⃣ Initialize client
-# -----------------------------
-client = cb.Client(API_KEY, API_SECRET)
-print("🚀 Nija Trading Bot initialized")
-
-# -----------------------------
-# 5️⃣ Example: check balances
-# -----------------------------
-try:
-    balances = client.get_account_balances()
-    print("💰 Account balances:", balances)
-except Exception as e:
-    print("❌ Failed to fetch balances:", e)
-
-# -----------------------------
-# 6️⃣ Your bot logic continues here
-# -----------------------------
-# client.place_order(...)
