@@ -1,11 +1,11 @@
 #!/bin/bash
-set -e  # Exit immediately if a command fails
+set -e
 set -o pipefail
 
 echo "🚀 Starting Nija Trading Bot..."
 
 # -----------------------------
-# 1️⃣ Activate virtual environment if it exists
+# 1️⃣ Activate virtual environment or create one
 # -----------------------------
 if [ -f ".venv/bin/activate" ]; then
     echo "🔹 Activating virtual environment..."
@@ -24,14 +24,17 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # -----------------------------
-# 3️⃣ Ensure vendor folder exists
+# 3️⃣ Ensure vendor folder exists for coinbase_advanced_py
 # -----------------------------
 if [ ! -d "vendor/coinbase_advanced_py" ]; then
     echo "⚠️ Vendor folder for coinbase_advanced_py not found!"
-    echo "🔹 Downloading and vendoring coinbase_advanced_py..."
     mkdir -p vendor
+    echo "🔹 Downloading coinbase_advanced_py..."
     python3 -m pip download coinbase-advanced-py==1.8.2 --no-deps -d ./vendor
-    unzip ./vendor/coinbase-advanced-py-1.8.2-py3-none-any.whl -d ./vendor/coinbase_advanced_py
+    echo "🔹 Extracting..."
+    for whl in ./vendor/coinbase-advanced-py-*.whl; do
+        unzip -q "$whl" -d ./vendor/coinbase_advanced_py
+    done
 fi
 
 # -----------------------------
