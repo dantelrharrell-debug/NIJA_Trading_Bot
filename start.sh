@@ -1,40 +1,21 @@
 #!/bin/bash
-set -e  # Exit immediately if a command fails
+set -e
 set -o pipefail
 
-# =========================
-# 1️⃣ Activate virtual environment
-# =========================
+# Activate virtualenv
 if [ -d ".venv" ]; then
-    echo "✅ Activating virtual environment..."
     source .venv/bin/activate
 else
-    echo "⚠️ .venv not found, creating..."
     python3 -m venv .venv
     source .venv/bin/activate
 fi
 
-# =========================
-# 2️⃣ Upgrade pip & install requirements
-# =========================
-echo "✅ Installing/upgrading pip and dependencies..."
+# Upgrade pip & install requirements
 pip install --upgrade pip
 pip install --no-cache-dir -r requirements.txt
 
-# =========================
-# 3️⃣ Ensure vendor folder exists
-# =========================
-VENDOR_DIR="./vendor"
-if [ ! -d "$VENDOR_DIR/coinbase_advanced_py" ]; then
-    echo "❌ Vendor folder missing: $VENDOR_DIR/coinbase_advanced_py"
-    echo "Please copy coinbase_advanced_py into the vendor folder."
-    exit 1
-else
-    echo "✅ Vendor folder found: $VENDOR_DIR"
-fi
+# Setup vendor modules automatically
+python3 setup_vendor.py
 
-# =========================
-# 4️⃣ Start Nija Bot
-# =========================
-echo "🚀 Starting Nija Trading Bot..."
+# Start the bot
 python3 nija_bot.py
