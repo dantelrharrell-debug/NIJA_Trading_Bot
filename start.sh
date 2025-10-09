@@ -1,14 +1,14 @@
 #!/bin/bash
-# start.sh — Render-friendly
+# start.sh
 
-# Make sure we use venv python
+# Activate the virtual environment
 source .venv/bin/activate
 
-# Upgrade pip (optional)
+# Optional: Upgrade pip
 python3 -m pip install --upgrade pip --break-system-packages
 
-# Install dependencies if not already installed
+# Install dependencies if needed
 python3 -m pip install -r requirements.txt --break-system-packages
 
-# Run the bot using venv python
+# Run the bot using the venv python
 python3 -u nija_bot.py
