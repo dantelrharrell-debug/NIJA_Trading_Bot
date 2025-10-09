@@ -1,34 +1,36 @@
+# nija_bot.py — Render-ready
+
 import os
 import time
 import pandas as pd
-import coinbase_advanced_py as cb
 from dotenv import load_dotenv
+import coinbase_advanced_py as cb
 
 # =============================
 # Load environment variables
 # =============================
-load_dotenv()
-
+load_dotenv()  # only needed if using a .env file in repo root
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
+SANDBOX = os.getenv("SANDBOX", "False").lower() == "true"
 
 if not API_KEY or not API_SECRET:
     raise ValueError("❌ API_KEY or API_SECRET missing")
 
-client = cb.Client(API_KEY, API_SECRET)
+client = cb.Client(API_KEY, API_SECRET, sandbox=SANDBOX)
 print("🚀 Coinbase client initialized")
 
 # =============================
 # Bot settings
 # =============================
-SYMBOLS = ["BTC-USD", "ETH-USD", "LTC-USD"]
-TRADE_INTERVAL = int(os.getenv("SLEEP_INTERVAL", 60))  # seconds
-CANDLE_INTERVAL = "1m"  # 1-minute candles
-HISTORY_LIMIT = 50
+SYMBOLS = os.getenv("TRADE_COINS", "BTC-USD,ETH-USD,LTC-USD").split(",")
+TRADE_INTERVAL = int(os.getenv("TRADE_INTERVAL", 60))  # seconds
+CANDLE_INTERVAL = os.getenv("CANDLE_INTERVAL", "1m")  # 1m, 5m, etc.
+HISTORY_LIMIT = int(os.getenv("PRICE_HISTORY_LENGTH", 50))
 MIN_SIZE_PCT = float(os.getenv("MIN_RISK", 0.02))
 MAX_SIZE_PCT = float(os.getenv("MAX_RISK", 0.10))
-RSI_PERIOD = 14
-VWAP_PERIOD = 14
+RSI_PERIOD = int(os.getenv("RSI_PERIOD", 14))
+VWAP_PERIOD = int(os.getenv("VWAP_PERIOD", 14))
 
 open_positions = {symbol: [] for symbol in SYMBOLS}
 
@@ -41,7 +43,7 @@ def get_equity():
     return total
 
 def calculate_position_size(equity):
-    pct = max(MIN_SIZE_PCT, min(MAX_SIZE_PCT, equity / 100))
+    pct = max(MIN_SIZE_PCT, min(MAX_SIZE_PCT, equity/100))
     return pct
 
 def fetch_candles(symbol, interval="1m", limit=50):
@@ -51,7 +53,7 @@ def fetch_candles(symbol, interval="1m", limit=50):
         df['close'] = df['close'].astype(float)
         return df
     except Exception as e:
-        print(f"❌ Error fetching candles for {symbol}:", e)
+        print(f"❌ Error fetching candles for {symbol}: {e}")
         return pd.DataFrame()
 
 def compute_rsi(prices, period=14):
@@ -73,9 +75,9 @@ def get_signal(df):
     last = df.iloc[-1]
     
     if last['RSI'] < 30 and last['close'] < last['VWAP']:
-        return "buy", last['close'] * 0.99, last['close'] * 1.01  # stop-loss, take-profit
+        return "buy", last['close']*0.99, last['close']*1.01  # stop-loss, take-profit
     elif last['RSI'] > 70 and last['close'] > last['VWAP']:
-        return "sell", last['close'] * 1.01, last['close'] * 0.99
+        return "sell", last['close']*1.01, last['close']*0.99
     return None, None, None
 
 def place_trade(symbol, side, size, stop_loss=None, take_profit=None):
@@ -84,7 +86,7 @@ def place_trade(symbol, side, size, stop_loss=None, take_profit=None):
         order = client.place_order(symbol=symbol, side=side, size=size)
         return order
     except Exception as e:
-        print("❌ Error placing trade:", e)
+        print(f"❌ Error placing trade for {symbol}: {e}")
         return None
 
 def check_exit(position, current_price):
