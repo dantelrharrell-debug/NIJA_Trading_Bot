@@ -1,18 +1,9 @@
-import importlib, subprocess, sys
-
-package = "coinbase_advanced_py"
-try:
-    import coinbase_advanced_py as cb
-except Exception:
-    print(f"⏳ {package} not present — attempting pip install...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "coinbase-advanced-py==1.8.2"])
-    importlib.invalidate_caches()
-    import coinbase_advanced_py as cb
 import os
 import time
 import pandas as pd
 from dotenv import load_dotenv
 import coinbase_advanced_py as cb
+from flask import Flask, request, jsonify
 
 # =============================
 # Load environment variables
@@ -20,9 +11,18 @@ import coinbase_advanced_py as cb
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-if not API_KEY or not API_SECRET:
-    raise ValueError("❌ API_KEY or API_SECRET missing")
+NGROK_TOKEN = os.getenv("NGROK_TOKEN")  # optional
+MIN_ORDER_USD = float(os.getenv("MIN_ORDER_USD", 10))
+MAX_POSITION_PERCENT = float(os.getenv("MAX_POSITION_PERCENT", 10))
+MIN_POSITION_PERCENT = float(os.getenv("MIN_POSITION_PERCENT", 2))
+PORT = int(os.getenv("PORT", 5000))  # Render provides PORT automatically
 
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET missing in environment variables.")
+
+# =============================
+# Initialize Coinbase client
+# =============================
 client = cb.Client(API_KEY, API_SECRET)
 print("🚀 Coinbase client initialized")
 
@@ -30,11 +30,9 @@ print("🚀 Coinbase client initialized")
 # Bot settings
 # =============================
 SYMBOLS = ["BTC-USD", "ETH-USD", "LTC-USD"]
-TRADE_INTERVAL = 60  # in seconds
-CANDLE_INTERVAL = "1m"  # 1-minute candles
+TRADE_INTERVAL = 60  # seconds
+CANDLE_INTERVAL = "1m"
 HISTORY_LIMIT = 50
-MIN_SIZE_PCT = 0.02
-MAX_SIZE_PCT = 0.10
 RSI_PERIOD = 14
 VWAP_PERIOD = 14
 open_positions = {symbol: [] for symbol in SYMBOLS}
@@ -48,7 +46,7 @@ def get_equity():
     return total
 
 def calculate_position_size(equity):
-    pct = max(MIN_SIZE_PCT, min(MAX_SIZE_PCT, equity/100))
+    pct = max(MIN_POSITION_PERCENT/100, min(MAX_POSITION_PERCENT/100, equity/100))
     return pct
 
 def fetch_candles(symbol, interval="1m", limit=50):
@@ -61,7 +59,7 @@ def fetch_candles(symbol, interval="1m", limit=50):
         print(f"❌ Error fetching candles for {symbol}:", e)
         return pd.DataFrame()
 
-def compute_rsi(prices, period=14):
+def compute_rsi(prices, period=RSI_PERIOD):
     delta = prices.diff()
     gain = delta.clip(lower=0)
     loss = -1 * delta.clip(upper=0)
@@ -75,19 +73,18 @@ def compute_vwap(df):
     return (df['close'] * df['close']).cumsum() / df['close'].cumsum()
 
 def get_signal(df):
-    df['RSI'] = compute_rsi(df['close'], RSI_PERIOD)
+    df['RSI'] = compute_rsi(df['close'])
     df['VWAP'] = compute_vwap(df)
     last = df.iloc[-1]
-    
     if last['RSI'] < 30 and last['close'] < last['VWAP']:
-        return "buy", last['close']*0.99, last['close']*1.01  # stop-loss, take-profit
+        return "buy", last['close']*0.99, last['close']*1.01
     elif last['RSI'] > 70 and last['close'] > last['VWAP']:
         return "sell", last['close']*1.01, last['close']*0.99
     return None, None, None
 
-def place_trade(side, size, stop_loss=None, take_profit=None):
+def place_trade(symbol, side, size, stop_loss=None, take_profit=None):
     try:
-        print(f"💰 Placing {side} trade: size={size}, SL={stop_loss}, TP={take_profit}")
+        print(f"💰 Placing {side} trade for {symbol}: size={size}, SL={stop_loss}, TP={take_profit}")
         order = client.place_order(symbol=symbol, side=side, size=size)
         return order
     except Exception as e:
@@ -95,19 +92,31 @@ def place_trade(side, size, stop_loss=None, take_profit=None):
         return None
 
 def check_exit(position, current_price):
-    if position['side'] == 'buy' and current_price >= position.get('take_profit', 0):
-        print(f"✅ Take-profit hit for {position['symbol']}")
+    if position['side'] == 'buy' and (current_price >= position.get('take_profit', 0) or current_price <= position.get('stop_loss', 0)):
         return True
-    if position['side'] == 'buy' and current_price <= position.get('stop_loss', 0):
-        print(f"⚠ Stop-loss hit for {position['symbol']}")
-        return True
-    if position['side'] == 'sell' and current_price <= position.get('take_profit', 0):
-        print(f"✅ Take-profit hit for {position['symbol']}")
-        return True
-    if position['side'] == 'sell' and current_price >= position.get('stop_loss', 0):
-        print(f"⚠ Stop-loss hit for {position['symbol']}")
+    if position['side'] == 'sell' and (current_price <= position.get('take_profit', 0) or current_price >= position.get('stop_loss', 0)):
         return True
     return False
+
+# =============================
+# Flask Webhook (optional)
+# =============================
+app = Flask(__name__)
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    symbol = data.get("symbol")
+    side = data.get("side")
+    amount = float(data.get("amount", MIN_ORDER_USD))
+    if amount < MIN_ORDER_USD:
+        amount = MIN_ORDER_USD
+
+    print(f"📈 Trade Triggered via Webhook: {side} {amount} {symbol}")
+    order = place_trade(symbol, side, amount)
+    if order:
+        return jsonify({"status": "success", "order": order})
+    return jsonify({"status": "failed"}), 500
 
 # =============================
 # Main trading loop
@@ -118,7 +127,6 @@ def main():
         try:
             equity = get_equity()
             size = calculate_position_size(equity)
-            
             for symbol in SYMBOLS:
                 candles = fetch_candles(symbol, interval=CANDLE_INTERVAL, limit=HISTORY_LIMIT)
                 if candles.empty:
@@ -133,17 +141,21 @@ def main():
                 # New signal
                 signal, sl, tp = get_signal(candles)
                 if signal:
-                    position = place_trade(signal, size, stop_loss=sl, take_profit=tp)
+                    position = place_trade(symbol, signal, size, stop_loss=sl, take_profit=tp)
                     if position:
                         open_positions[symbol].append(position)
                 else:
                     print(f"⏸ No trade signal for {symbol}")
 
             time.sleep(TRADE_INTERVAL)
-
         except Exception as e:
             print("❌ Error in main loop:", e)
             time.sleep(5)
 
+# =============================
+# Start bot and webhook
+# =============================
 if __name__ == "__main__":
+    from threading import Thread
+    Thread(target=lambda: app.run(host="0.0.0.0", port=PORT)).start()
     main()
