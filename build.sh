@@ -1,19 +1,14 @@
 #!/bin/bash
-set -e  # Stop on any error
+# ==========================
+# build.sh
+# ==========================
+# Ensure we are in the correct directory
+echo "📦 Starting build process..."
 
-echo "==> Creating virtual environment..."
-python3 -m venv .venv
-
-echo "==> Activating virtual environment..."
-source .venv/bin/activate
-
-echo "==> Upgrading pip..."
+# Upgrade pip in the virtual environment
 python3 -m pip install --upgrade pip
 
-echo "==> Installing requirements..."
+# Install all dependencies from requirements.txt
 python3 -m pip install -r requirements.txt
 
-echo "==> Installing coinbase-advanced-py explicitly..."
-python3 -m pip install coinbase-advanced-py==1.8.2
-
-echo "✅ Build completed successfully!"
+echo "✅ Build complete."
