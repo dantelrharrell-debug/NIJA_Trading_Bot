@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# nija_bot.py
-
 import sys
 import os
 
