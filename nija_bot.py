@@ -1,6 +1,14 @@
 import sys
 import os
 
+VENDOR_DIR = os.path.join(os.path.dirname(__file__), "vendor")
+if VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
+
+import coinbase_advanced_py as cb
+print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))import sys
+import os
+
 # -----------------------------
 # 1️⃣ Add vendor folder to sys.path
 # -----------------------------
