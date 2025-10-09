@@ -1,9 +1,7 @@
 #!/bin/bash
-# Upgrade pip first
-python3 -m pip install --upgrade pip
-
-# Install all dependencies
-python3 -m pip install -r requirements.txt
-
+# ==========================
+# start.sh
+# ==========================
+echo "🚀 Starting Nija Trading Bot..."
 # Run the bot
 python3 -u nija_bot.py
