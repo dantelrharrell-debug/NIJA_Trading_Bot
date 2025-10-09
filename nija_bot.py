@@ -1,6 +1,7 @@
 import os
 import time
 import pandas as pd
+import coinbase_advanced_py as cb
 from dotenv import load_dotenv
 
 # =============================
@@ -8,60 +9,28 @@ from dotenv import load_dotenv
 # =============================
 load_dotenv()
 
-# Coinbase API keys
-SPOT_KEY = os.getenv("COINBASE_SPOT_KEY")
-SPOT_SECRET = os.getenv("COINBASE_SPOT_SECRET")
-SPOT_PASSPHRASE = os.getenv("COINBASE_SPOT_PASSPHRASE")
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
 
-FUTURES_KEY = os.getenv("COINBASE_FUTURES_KEY")
-FUTURES_SECRET = os.getenv("COINBASE_FUTURES_SECRET")
-FUTURES_PASSPHRASE = os.getenv("COINBASE_FUTURES_PASSPHRASE")
+if not API_KEY or not API_SECRET:
+    raise ValueError("❌ API_KEY or API_SECRET missing")
 
-# Bot settings
-TP_PERCENT = float(os.getenv("TP_PERCENT", 1.0))
-SL_PERCENT = float(os.getenv("SL_PERCENT", 1.0))
-TRAILING_STOP = float(os.getenv("TRAILING_STOP", 0.5))
-TRAILING_TP = float(os.getenv("TRAILING_TP", 0.5))
-SMART_LOGIC = os.getenv("SMART_LOGIC", "False").lower() == "true"
-DRY_RUN = os.getenv("DRY_RUN", "False").lower() == "true"
-SANDBOX = os.getenv("SANDBOX", "False").lower() == "true"
-
-TRADE_SYMBOLS = os.getenv("TRADE_SYMBOLS", "BTC-USD").split(",")
-DEFAULT_TRADE_AMOUNT = float(os.getenv("DEFAULT_TRADE_AMOUNT", 10))
-MAX_TRADE_AMOUNT = float(os.getenv("MAX_TRADE_AMOUNT", 100))
-MIN_TRADE_AMOUNT = float(os.getenv("MIN_TRADE_AMOUNT", 10))
-MIN_RISK = float(os.getenv("MIN_RISK", 0.02))
-MAX_RISK = float(os.getenv("MAX_RISK", 0.10))
-
-TRADE_HISTORY_LIMIT = int(os.getenv("TRADE_HISTORY_LIMIT", 200))
-PRICE_HISTORY_LENGTH = int(os.getenv("PRICE_HISTORY_LENGTH", 50))
-SLEEP_INTERVAL = int(os.getenv("SLEEP_INTERVAL", 10))
-
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "YourStrongSecretHere")
-TRADINGVIEW_WEBHOOK = os.getenv("TRADINGVIEW_WEBHOOK")
-PORT = int(os.getenv("PORT", 10000))
-
-LEARNING_FILE = os.getenv("LEARNING_FILE", "trade_learning.json")
-BASE_STOP_LOSS = float(os.getenv("BASE_STOP_LOSS", 0.05))
-BASE_TAKE_PROFIT = float(os.getenv("BASE_TAKE_PROFIT", 0.10))
-FUTURES_AVAILABLE = os.getenv("FUTURES_AVAILABLE", "True").lower() == "true"
-
-# =============================
-# Import Coinbase SDK
-# =============================
-try:
-    import coinbase_advanced_py as cb
-except ModuleNotFoundError:
-    raise ModuleNotFoundError(
-        "coinbase_advanced_py not installed. Run:\n"
-        "pip install coinbase-advanced-py==1.8.2"
-    )
-
-# =============================
-# Initialize client
-# =============================
-client = cb.Client(SPOT_KEY, SPOT_SECRET)
+client = cb.Client(API_KEY, API_SECRET)
 print("🚀 Coinbase client initialized")
+
+# =============================
+# Bot settings
+# =============================
+SYMBOLS = ["BTC-USD", "ETH-USD", "LTC-USD"]
+TRADE_INTERVAL = int(os.getenv("SLEEP_INTERVAL", 60))  # seconds
+CANDLE_INTERVAL = "1m"  # 1-minute candles
+HISTORY_LIMIT = 50
+MIN_SIZE_PCT = float(os.getenv("MIN_RISK", 0.02))
+MAX_SIZE_PCT = float(os.getenv("MAX_RISK", 0.10))
+RSI_PERIOD = 14
+VWAP_PERIOD = 14
+
+open_positions = {symbol: [] for symbol in SYMBOLS}
 
 # =============================
 # Helper functions
@@ -72,10 +41,10 @@ def get_equity():
     return total
 
 def calculate_position_size(equity):
-    pct = max(MIN_RISK, min(MAX_RISK, equity/100))
+    pct = max(MIN_SIZE_PCT, min(MAX_SIZE_PCT, equity / 100))
     return pct
 
-def fetch_candles(symbol, interval="1m", limit=PRICE_HISTORY_LENGTH):
+def fetch_candles(symbol, interval="1m", limit=50):
     try:
         candles = client.get_historical_prices(symbol, granularity=interval, limit=limit)
         df = pd.DataFrame(candles)
@@ -99,31 +68,24 @@ def compute_vwap(df):
     return (df['close'] * df['close']).cumsum() / df['close'].cumsum()
 
 def get_signal(df):
-    df['RSI'] = compute_rsi(df['close'], 14)
+    df['RSI'] = compute_rsi(df['close'], RSI_PERIOD)
     df['VWAP'] = compute_vwap(df)
     last = df.iloc[-1]
     
     if last['RSI'] < 30 and last['close'] < last['VWAP']:
-        return "buy", last['close'] * (1 - SL_PERCENT/100), last['close'] * (1 + TP_PERCENT/100)
+        return "buy", last['close'] * 0.99, last['close'] * 1.01  # stop-loss, take-profit
     elif last['RSI'] > 70 and last['close'] > last['VWAP']:
-        return "sell", last['close'] * (1 + SL_PERCENT/100), last['close'] * (1 - TP_PERCENT/100)
+        return "sell", last['close'] * 1.01, last['close'] * 0.99
     return None, None, None
 
 def place_trade(symbol, side, size, stop_loss=None, take_profit=None):
     try:
         print(f"💰 Placing {side} trade for {symbol}: size={size}, SL={stop_loss}, TP={take_profit}")
-        if DRY_RUN:
-            return {"symbol": symbol, "side": side, "size": size, "stop_loss": stop_loss, "take_profit": take_profit}
         order = client.place_order(symbol=symbol, side=side, size=size)
         return order
     except Exception as e:
         print("❌ Error placing trade:", e)
         return None
-
-# =============================
-# Main trading loop
-# =============================
-open_positions = {symbol: [] for symbol in TRADE_SYMBOLS}
 
 def check_exit(position, current_price):
     if position['side'] == 'buy' and current_price >= position.get('take_profit', 0):
@@ -140,15 +102,18 @@ def check_exit(position, current_price):
         return True
     return False
 
+# =============================
+# Main trading loop
+# =============================
 def main():
-    print("🔥 Starting multi-symbol bot...")
+    print("🔥 Starting multi-symbol aggressive bot...")
     while True:
         try:
             equity = get_equity()
             size = calculate_position_size(equity)
             
-            for symbol in TRADE_SYMBOLS:
-                candles = fetch_candles(symbol)
+            for symbol in SYMBOLS:
+                candles = fetch_candles(symbol, interval=CANDLE_INTERVAL, limit=HISTORY_LIMIT)
                 if candles.empty:
                     continue
                 current_price = candles['close'].iloc[-1]
@@ -167,7 +132,7 @@ def main():
                 else:
                     print(f"⏸ No trade signal for {symbol}")
 
-            time.sleep(SLEEP_INTERVAL)
+            time.sleep(TRADE_INTERVAL)
 
         except Exception as e:
             print("❌ Error in main loop:", e)
