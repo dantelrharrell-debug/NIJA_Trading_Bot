@@ -1,36 +1,10 @@
-import sys
-import os
-
-# Add vendor folder to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "vendor"))
-
-import coinbase_advanced_py as cb
-from dotenv import load_dotenv
-
-load_dotenv()
-
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-
-if not API_KEY or not API_SECRET:
-    raise SystemExit("❌ Missing API_KEY or API_SECRET")
-
-client = cb.Client(API_KEY, API_SECRET)
-
-print("🚀 Trading bot started")
-balances = client.get_account_balances()
-print("💰 Account balances:", balances)
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "vendor"))
-
-import coinbase_advanced_py as cb
 #!/usr/bin/env python3
 import os
 from dotenv import load_dotenv
 import coinbase_advanced_py as cb
 
 # -----------------------------
-# Load environment variables
+# Load API keys from environment
 # -----------------------------
 load_dotenv()
 
@@ -62,5 +36,9 @@ except Exception as e:
 # -----------------------------
 # Bot logic placeholder
 # -----------------------------
-# if not DRY_RUN:
-#     client.place_order(product_id="BTC-USD", side="buy", price="30000", size="0.001")
+if not DRY_RUN:
+    # Example order:
+    # client.place_order(product_id="BTC-USD", side="buy", price="30000", size="0.001")
+    print("Trading logic would run here")
+else:
+    print("💤 DRY_RUN is True, no orders placed")
