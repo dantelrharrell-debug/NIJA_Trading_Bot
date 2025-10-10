@@ -3,6 +3,10 @@ sys.path.insert(0, './vendor')  # ensure Python finds vendored packages
 
 import coinbase_advanced_py as cb
 import sys
+sys.path.insert(0, './vendor')  # ensure Python finds vendored packages
+
+import coinbase_advanced_py as cb
+import sys
 import os
 
 # Add vendor folder to path
