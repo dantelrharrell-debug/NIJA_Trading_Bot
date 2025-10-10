@@ -1,87 +1,130 @@
 #!/usr/bin/env python3
-# nija_bot.py - robust importer for coinbase-advanced-py and safe startup
+"""
+Robust nija_bot startup script.
 
+- Tries to import coinbase-ish packages installed by pip.
+- Scans the package for submodules and classes named *Client or factory functions.
+- Instantiates a client if possible (DRY_RUN safe).
+- If no client found, prints diagnostics to help decide the next step.
+"""
 import sys
 import os
 import pkgutil
 import importlib
+import inspect
+import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).parent.resolve()
-print("🚀 Starting Nija Trading Bot (diagnostic mode)")
+print("🚀 Starting Nija Trading Bot (robust importer)")
 print("Python:", sys.executable)
 print("Working dir:", ROOT)
 print("sys.path head:", sys.path[:4])
 
-# Show coinbase-ish modules visible to this interpreter (helpful in logs)
-coinbase_candidates = [m.name for m in pkgutil.iter_modules() if m.name.startswith("coinbase")]
-print("coinbase-ish modules found:", coinbase_candidates)
+# Show coinbase-ish modules visible to this interpreter
+found = []
+for m in pkgutil.iter_modules():
+    if m.name.startswith("coinbase"):
+        found.append(m.name)
+print("coinbase-ish modules found:", found)
 
-# try import many likely module names (order matters)
-TRY_NAMES = [
+# Candidate names (order matters)
+CANDIDATES = [
     "coinbase_advanced_py",
     "coinbase_advanced",
     "coinbase_api",
     "coinbase_client",
-    "coinbase",  # fallback that some installers expose
+    "coinbase",  # fallback
 ]
 
-cb = None
-cb_name = None
-for name in TRY_NAMES:
+module = None
+mod_name = None
+for name in CANDIDATES:
     try:
-        cb = importlib.import_module(name)
-        cb_name = name
-        print(f"✅ Imported {name}")
+        module = importlib.import_module(name)
+        mod_name = name
+        print(f"✅ Imported module: {name} (file={getattr(module,'__file__',None)})")
         break
     except Exception as e:
-        print(f"✖ could not import {name}: {type(e).__name__}: {e}")
+        print(f"✖ Import {name} failed: {type(e).__name__}: {e}")
 
-if cb is None:
-    print("❌ Could not import any coinbase-* module. Ensure requirements.txt contains coinbase-advanced-py==1.8.2 and Render ran start.sh.")
+if module is None:
+    print("❌ Could not import any coinbase* module. Ensure requirements.txt includes coinbase-advanced-py==1.8.2 and start.sh installs it.")
     raise SystemExit(1)
 
-# Inspect module attributes to find an entrypoint
-print("ℹ️ Inspecting module attributes:", sorted([a for a in dir(cb) if not a.startswith("_")])[:60])
+# Print top-level attributes (non-private)
+attrs = [a for a in dir(module) if not a.startswith("_")]
+print("Top-level attributes on imported module:", attrs[:120])
 
-# Common patterns:
-# - a Client class: cb.Client or cb.client.Client or cb.client.ClientClass
-# - factory function: cb.get_accounts(api_key=..., api_secret=...)
-# We'll try to find a Client class first, then common factory functions.
+# If module has __path__, list top-level submodules
+if hasattr(module, "__path__"):
+    print("Submodules inside package:")
+    for sub in pkgutil.iter_modules(module.__path__):
+        print(" -", sub.name)
 
+# Helper: find classes named *Client in module and submodules
 ClientClass = None
 factory_fn = None
 
-# 1) direct attribute Client
-if hasattr(cb, "Client"):
-    ClientClass = getattr(cb, "Client")
-    print("ℹ️ Found Client on module:", ClientClass)
-else:
-    # 2) some packages put client under submodule 'client' or 'api' — try common locations
-    for sub in ("client", "api", "client_api"):
+def find_client_class_in_obj(obj):
+    # return first class where name endswith 'Client'
+    for name, val in inspect.getmembers(obj, inspect.isclass):
+        if name.lower().endswith("client"):
+            return val, f"{obj.__name__}.{name}" if hasattr(obj, "__name__") else name
+    return None, None
+
+# 1) check module itself
+c, where = find_client_class_in_obj(module)
+if c:
+    ClientClass = c
+    print(f"ℹ️ Found ClientClass at {where}")
+
+# 2) check common submodules
+if ClientClass is None and hasattr(module, "__path__"):
+    for sub in pkgutil.iter_modules(module.__path__):
         try:
-            submod = importlib.import_module(f"{cb_name}.{sub}")
-            if hasattr(submod, "Client"):
-                ClientClass = getattr(submod, "Client")
-                print(f"ℹ️ Found Client in submodule {cb_name}.{sub}")
+            submod = importlib.import_module(f"{mod_name}.{sub.name}")
+            c, where = find_client_class_in_obj(submod)
+            if c:
+                ClientClass = c
+                print(f"ℹ️ Found ClientClass at {mod_name}.{sub.name}.{c.__name__}")
                 break
         except Exception:
             pass
 
-# 3) factory function names
-for fn in ("create_client", "get_client", "Client", "client", "create_client_from_env"):
-    if hasattr(cb, fn) and callable(getattr(cb, fn)):
-        factory_fn = getattr(cb, fn)
-        print(f"ℹ️ Found factory function {fn} on module")
+# 3) check for factory functions on module: create_client, get_client, client_from_env, Client (callable)
+for fn in ("create_client", "get_client", "client_from_env", "create_client_from_env", "Client"):
+    if hasattr(module, fn) and callable(getattr(module, fn)):
+        factory_fn = getattr(module, fn)
+        print(f"ℹ️ Found factory function on module: {fn}")
         break
 
-# 4) fallback: some releases expose convenience functions like get_accounts directly
-if factory_fn is None and ClientClass is None:
-    for fn in ("get_accounts", "get_account_balances", "list_accounts"):
-        if hasattr(cb, fn) and callable(getattr(cb, fn)):
-            factory_fn = getattr(cb, fn)
-            print(f"ℹ️ Found top-level API function {fn} (we'll call it directly later).")
-            break
+# 4) check submodules for factory functions
+if factory_fn is None and hasattr(module, "__path__"):
+    for sub in pkgutil.iter_modules(module.__path__):
+        try:
+            submod = importlib.import_module(f"{mod_name}.{sub.name}")
+            for fn in ("create_client", "get_client", "client_from_env", "create_client_from_env", "Client"):
+                if hasattr(submod, fn) and callable(getattr(submod, fn)):
+                    factory_fn = getattr(submod, fn)
+                    print(f"ℹ️ Found factory function at {mod_name}.{sub.name}.{fn}")
+                    break
+            if factory_fn:
+                break
+        except Exception:
+            pass
+
+# 5) as a last resort search all attributes for callables with 'client' in name
+if ClientClass is None and factory_fn is None:
+    for name in attrs:
+        try:
+            val = getattr(module, name)
+            if callable(val) and "client" in name.lower() and name.lower() != "client":
+                factory_fn = val
+                print(f"ℹ️ Found client-like callable: {name} on module")
+                break
+        except Exception:
+            pass
 
 # Load env
 try:
@@ -93,74 +136,110 @@ except Exception:
 
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-DRY_RUN = os.getenv("DRY_RUN", "True").lower() in ("1", "true", "yes")
+DRY_RUN = os.getenv("DRY_RUN", "True").lower() in ("1", "true", "yes", "y", "1")
 
 if not API_KEY or not API_SECRET:
-    print("⚠️ Missing API_KEY or API_SECRET environment variables! Set them in Render Service → Environment.")
+    print("⚠️ API_KEY or API_SECRET not set in env. Bot will run in DRY_RUN mode.")
     if not DRY_RUN:
-        raise SystemExit("Missing credentials and DRY_RUN is False. Aborting.")
-    print("⚠️ Running in DRY_RUN (no trades).")
+        print("❌ DRY_RUN is False but credentials missing — aborting.")
+        raise SystemExit(1)
 
-# Create client or use factory
+# Instantiate client
 client = None
 if ClientClass is not None:
     try:
-        client = ClientClass(API_KEY or "fake", API_SECRET or "fake")
-        print("🚀 ClientClass instantiated:", type(client))
+        # try common constructor signatures
+        try:
+            client = ClientClass(API_KEY, API_SECRET)
+        except TypeError:
+            try:
+                client = ClientClass(api_key=API_KEY, api_secret=API_SECRET)
+            except Exception:
+                client = ClientClass()
+        print("🚀 Instantiated client from ClientClass:", type(client))
     except Exception as e:
-        print("❌ Failed to instantiate ClientClass:", type(e).__name__, e)
+        print("❌ ClientClass instantiation failed:", type(e).__name__, e)
+        traceback.print_exc()
 elif factory_fn is not None:
     try:
-        # some factory functions want (api_key, api_secret) or kwargs
+        # try calling factory function
         try:
             client = factory_fn(API_KEY, API_SECRET)
         except TypeError:
-            client = factory_fn(api_key=API_KEY, api_secret=API_SECRET)
-        print("🚀 Client created via factory function:", type(client))
+            try:
+                client = factory_fn(api_key=API_KEY, api_secret=API_SECRET)
+            except TypeError:
+                client = factory_fn()
+        print("🚀 Client produced by factory function:", type(client))
     except Exception as e:
-        print("❌ Factory function failed:", type(e).__name__, e)
+        print("❌ Factory function invocation failed:", type(e).__name__, e)
+        traceback.print_exc()
 else:
-    print("⚠️ No Client or factory found; falling back to direct API function calls if present.")
+    print("⚠️ No Client class or factory found. Will try to call direct API functions if present.")
 
-# Quick smoke test: find account listing function on client or module
-def try_accounts():
+# Try a safe accounts/balances check
+def safe_accounts_check():
     try:
+        # client methods
         if client is not None:
-            # try common methods
-            for fname in ("get_account_balances", "get_accounts", "list_accounts", "accounts"):
-                if hasattr(client, fname) and callable(getattr(client, fname)):
-                    res = getattr(client, fname)()
-                    print("💰 Accounts from client.", fname, "=>", res)
+            for name in ("get_account_balances", "get_accounts", "list_accounts", "accounts"):
+                if hasattr(client, name) and callable(getattr(client, name)):
+                    print("💰 Calling client.", name)
+                    res = getattr(client, name)()
+                    print("Accounts result:", res)
                     return True
-        # try module-level functions
-        for fname in ("get_account_balances", "get_accounts", "list_accounts"):
-            if hasattr(cb, fname) and callable(getattr(cb, fname)):
-                res = getattr(cb, fname)(API_KEY, API_SECRET) if API_KEY else getattr(cb, fname)()
-                print("💰 Accounts from module.", fname, "=>", res)
+
+        # module-level functions
+        for name in ("get_account_balances", "get_accounts", "list_accounts"):
+            if hasattr(module, name) and callable(getattr(module, name)):
+                fn = getattr(module, name)
+                print("💰 Calling module function", name)
+                try:
+                    res = fn(API_KEY, API_SECRET) if API_KEY else fn()
+                except TypeError:
+                    res = fn()
+                print("Accounts result:", res)
                 return True
     except Exception as e:
         print("ℹ️ accounts check failed:", type(e).__name__, e)
+        traceback.print_exc()
     return False
 
-if try_accounts():
+if safe_accounts_check():
     print("✅ Accounts check succeeded (no trades executed).")
 else:
-    print("⚠️ Accounts check did not succeed; the module layout is unusual. You may need to check the package internals.")
-    # Show more info to debug
-    print("Module file:", getattr(cb, "__file__", "unknown"))
-    print("Module repr:", cb)
+    print("⚠️ Accounts check did not succeed. The installed package layout may require a specific import path or usage.")
+    print("Module file:", getattr(module, "__file__", None))
+    print("Module repr:", module)
+    print("Top-level attributes again:", attrs[:200])
 
-# -----------------------------
-# Main bot loop placeholder (safe)
-# -----------------------------
-if DRY_RUN:
-    print("ℹ️ DRY_RUN mode: bot will not place trades. Set DRY_RUN env to False to allow live trading.")
+    # Show submodule files (if possible) to aide debugging
+    if hasattr(module, "__path__"):
+        print("\n--- Listing package files for debugging ---")
+        for pkgpath in module.__path__:
+            try:
+                import os
+                for root, dirs, files in os.walk(pkgpath):
+                    print("PATH:", root)
+                    for f in files[:200]:
+                        print("  ", f)
+                    break
+            except Exception as e:
+                print("Could not list package path:", e)
 
+    # Print safe instructions to add to your message for next step
+    print("\nNEXT STEPS (copy & paste these two lines into chat if you want me to finish):")
+    print("1) The top 30 attrs printed above (copy them).")
+    print("2) The first PATH printed in 'Module file:' above (copy that path).")
+    print("With those I will tell you the exact import to use.")
+
+# Minimal safe heartbeat loop (so Render shows activity)
+print("DRY_RUN =", DRY_RUN)
 import time
 try:
-    for i in range(3):  # small heartbeat loop so Render logs show the bot working
-        print(f"❤️ heartbeat {i+1}/3 — DRY_RUN={DRY_RUN}")
+    for i in range(3):
+        print(f"♥ heartbeat {i+1}/3 — DRY_RUN={DRY_RUN}")
         time.sleep(1)
-    print("✅ Startup complete. Replace the placeholder loop below with real trading logic.")
+    print("✅ Startup diagnostics finished.")
 except KeyboardInterrupt:
-    print("🛑 Stopped by user")
+    print("🛑 stopped by user")
