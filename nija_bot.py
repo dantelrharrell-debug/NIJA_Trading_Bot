@@ -30,10 +30,4 @@ except Exception as e:
 # -----------------------------
 # Bot logic placeholder
 # -----------------------------
-# Example:
-# client.place_order(
-#     product_id="BTC-USD",
-#     side="buy",
-#     order_type="market",
-#     size="0.001"
-# )
+# Example: client.place_order(...)
