@@ -1,3 +1,14 @@
+import pkgutil, importlib, sys
+
+print("site-packages scan (prefix):", sys.path[:4])
+for m in pkgutil.iter_modules():
+    name = m.name
+    if name.startswith("coinbase"):
+        print("found coinbase-ish module:", name)
+
+import os
+from dotenv import load_dotenv
+# (then your existing code below)
 #!/usr/bin/env python3
 import sys, os
 from pathlib import Path
