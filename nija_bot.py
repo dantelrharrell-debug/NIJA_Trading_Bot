@@ -1,10 +1,4 @@
-# Old (incorrect)
-# import coinbase_advanced_py as cb
-# from coinbase_advanced_py import Client
-
-# New (correct)
-import coinbase as cb
-from coinbase import Client#!/usr/bin/env python3
+#!/usr/bin/env python3
 import sys
 import os
 
@@ -16,8 +10,9 @@ import os
 #     print("✅ Added vendor to sys.path:", VENDOR_DIR)
 
 try:
-    import coinbase_advanced_py as cb
-    print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))
+    import coinbase as cb
+    from coinbase import Client
+    print("✅ Imported coinbase-advanced-py as 'coinbase'", getattr(cb, "__version__", "unknown"))
 except ModuleNotFoundError as e:
-    print("❌ Module coinbase_advanced_py not found:", e)
+    print("❌ Module 'coinbase' not found:", e)
     raise SystemExit(1)
