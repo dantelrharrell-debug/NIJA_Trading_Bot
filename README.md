@@ -1,17 +1,9 @@
-# NIJA_Trading_Bot
+# Nija Trading Bot
 
-Automated aggressive-but-safe trading bot for crypto.
-
-## Features
-- Multi-symbol support
-- High-frequency micro-trades
-- Dynamic position sizing
-- Webhook-enabled
-- 24/7 trading
+## Overview
+Automated crypto trading bot for Coinbase using `coinbase-advanced-py`.  
+Designed for fast, high-profit trades with safe position sizing (2–10% of equity).
 
 ## Setup
-1. Clone the repo
-2. Create a virtual environment
-3. Install dependencies
-4. Set API keys in `.env`
-5. Run the bot
+
+1. Copy `.env.example` → `.env` and fill in your Coinbase API keys:
