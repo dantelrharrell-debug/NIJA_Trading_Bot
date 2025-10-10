@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import os
 import time
-
 from dotenv import load_dotenv
-import coinbase_advanced_py as cb  # pip-installed module
+import coinbase_advanced_py as cb
 
 load_dotenv()
 
