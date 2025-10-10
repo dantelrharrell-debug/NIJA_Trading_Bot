@@ -1,11 +1,9 @@
 #!/bin/bash
 set -e
 
-# Upgrade pip, setuptools, and wheel
+# Upgrade pip and install requirements into the active virtual environment
 python3 -m pip install --upgrade pip setuptools wheel
-
-# Install dependencies
 python3 -m pip install -r requirements.txt
 
-# Run your bot
+# Run the bot
 exec python3 nija_bot.py
