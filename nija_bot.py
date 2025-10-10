@@ -10,7 +10,7 @@ try:
     import coinbase_advanced_py as cb
     print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))
 except ModuleNotFoundError as e:
-    print("❌ Module 'coinbase_advanced_py' not found.", e)
+    print("❌ Module 'coinbase_advanced_py' not found:", e)
     raise SystemExit(1)
 
 try:
