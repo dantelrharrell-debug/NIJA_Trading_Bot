@@ -1,4 +1,10 @@
-#!/usr/bin/env python3
+# Old (incorrect)
+# import coinbase_advanced_py as cb
+# from coinbase_advanced_py import Client
+
+# New (correct)
+import coinbase as cb
+from coinbase import Client#!/usr/bin/env python3
 import sys
 import os
 
