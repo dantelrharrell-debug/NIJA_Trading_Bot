@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
 import os
-import sys
+import coinbase_advanced_py as cb
 
 # -----------------------------
-# 1️⃣ Import coinbase_advanced_py
-# -----------------------------
-try:
-    import coinbase_advanced_py as cb
-    print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))
-except ModuleNotFoundError:
-    raise SystemExit("❌ coinbase_advanced_py not found. Make sure requirements.txt includes it.")
-
-# -----------------------------
-# 2️⃣ Load API keys from environment
+# Load API keys from environment
 # -----------------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
@@ -22,16 +13,13 @@ if not API_KEY or not API_SECRET:
     raise SystemExit("❌ Missing API_KEY or API_SECRET environment variables")
 
 # -----------------------------
-# 3️⃣ Initialize Coinbase client
+# Initialize Coinbase client
 # -----------------------------
-try:
-    client = cb.Client(API_KEY, API_SECRET)
-    print("🚀 Nija Trading Bot initialized")
-except AttributeError:
-    raise SystemExit("❌ coinbase_advanced_py has no attribute 'Client'. Check your version.")
+client = cb.Client(API_KEY, API_SECRET)
+print("🚀 Nija Trading Bot initialized")
 
 # -----------------------------
-# 4️⃣ Example: check balances
+# Example: check balances
 # -----------------------------
 try:
     balances = client.get_account_balances()
@@ -40,6 +28,6 @@ except Exception as e:
     print("❌ Failed to fetch balances:", e)
 
 # -----------------------------
-# 5️⃣ Bot logic placeholder
+# Bot logic placeholder
 # -----------------------------
 # Example: client.place_order(...)
