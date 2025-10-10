@@ -1,4 +1,8 @@
 import sys
+sys.path.insert(0, "vendor")  # Point Python to the vendor folder
+
+import coinbase_advanced_py as cb
+import sys
 sys.path.insert(0, "vendor")  # Add vendor folder to module path
 
 import coinbase_advanced_py as cb
