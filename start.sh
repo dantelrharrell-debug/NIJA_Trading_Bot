@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Upgrade pip and install requirements into the active virtual environment
+# Upgrade pip and install all dependencies
 python3 -m pip install --upgrade pip setuptools wheel
 python3 -m pip install -r requirements.txt
 
