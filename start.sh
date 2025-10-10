@@ -1,14 +1,12 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Upgrade pip safely in the current environment
+# 1) Upgrade basics (use --break-system-packages if Render environment complains)
 python3 -m pip install --upgrade pip setuptools wheel
 
-# Force install the Coinbase package (in Render’s environment)
-python3 -m pip install --no-cache-dir coinbase-advanced-py==1.8.2
+# 2) Install requirements into the environment Render provides
+# Add --break-system-packages if your build environment enforces system package management
+python3 -m pip install --break-system-packages -r requirements.txt
 
-# Install any other dependencies
-python3 -m pip install --no-cache-dir -r requirements.txt
-
-# Run the bot
+# 3) Start the bot with the same python that installed packages
 exec python3 nija_bot.py
