@@ -15,8 +15,11 @@ if not API_KEY or not API_SECRET:
 # -----------------------------
 # Initialize Coinbase client
 # -----------------------------
-client = cb.Client(API_KEY, API_SECRET)
-print("🚀 Nija Trading Bot initialized")
+try:
+    client = cb.Client(API_KEY, API_SECRET)
+    print("🚀 Nija Trading Bot initialized")
+except AttributeError:
+    raise SystemExit("❌ coinbase_advanced_py has no attribute 'Client'. Check your version.")
 
 # -----------------------------
 # Example: check balances
@@ -30,4 +33,6 @@ except Exception as e:
 # -----------------------------
 # Bot logic placeholder
 # -----------------------------
-# Example: client.place_order(...)
+# Example:
+# if not DRY_RUN:
+#     client.place_order(product_id="BTC-USD", side="buy", price="30000", size="0.001")
