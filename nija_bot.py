@@ -1,7 +1,7 @@
 import sys
 import os
 
-# Add the vendor folder (must be committed to GitHub)
+# Add vendor folder to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "vendor"))
 
 import coinbase_advanced_py as cb
