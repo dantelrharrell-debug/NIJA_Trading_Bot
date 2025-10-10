@@ -1,4 +1,25 @@
 #!/usr/bin/env python3
+import sys, os, traceback
+
+# Add vendor dir if present (fallback)
+VENDOR_DIR = os.path.join(os.path.dirname(__file__), "vendor")
+if os.path.isdir(VENDOR_DIR) and VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
+
+try:
+    import coinbase_advanced_py as cb
+except Exception as e:
+    print("❌ coinbase_advanced_py import FAILED.")
+    print(" - Checked vendor at:", VENDOR_DIR)
+    print(" - sys.path head:", sys.path[:5])
+    traceback.print_exc()
+    # Helpful hint for Render: ensure requirements.txt contains coinbase-advanced-py==1.8.2
+    print("\nHINT: Add 'coinbase-advanced-py==1.8.2' to requirements.txt or add a vendored 'vendor/coinbase_advanced_py' directory\n")
+    raise SystemExit(1)
+
+print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))
+# --- continue rest of your bot below ---
+#!/usr/bin/env python3
 import os
 import sys
 import time
