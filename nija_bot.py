@@ -1,3 +1,29 @@
+import sys
+import os
+
+# Add vendored folder to sys.path
+VENDOR_DIR = os.path.join(os.path.dirname(__file__), "vendor")
+if VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
+
+# Import coinbase_advanced_py from vendor
+try:
+    import coinbase_advanced_py as cb
+    print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))
+except ModuleNotFoundError:
+    raise SystemExit("❌ Module coinbase_advanced_py not found. Make sure 'vendor/coinbase_advanced_py' exists in the repo.")
+
+# Load keys
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ Missing API_KEY or API_SECRET environment variables")
+
+# Initialize client
+client = cb.Client(API_KEY, API_SECRET)
+print("🚀 Nija Trading Bot initialized")
 #!/usr/bin/env python3
 import sys
 import os
