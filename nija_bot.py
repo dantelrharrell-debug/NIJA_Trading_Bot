@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 import coinbase_advanced_py as cb
 
 # -----------------------------
-# Load environment variables
+# Load API keys from environment
 # -----------------------------
-load_dotenv()  # Optional locally; on Render, vars are in the dashboard
+load_dotenv()
 
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
@@ -36,8 +36,9 @@ except Exception as e:
 # -----------------------------
 # Bot logic placeholder
 # -----------------------------
-if not DRY_RUN:
-    print("⚡ Placing a test order (example)...")
-    # client.place_order(product_id="BTC-USD", side="buy", price="30000", size="0.001")
+if DRY_RUN:
+    print("⚠️ DRY_RUN mode enabled — no trades will be executed")
 else:
-    print("🟢 DRY_RUN enabled – no orders placed")
+    print("⚠️ DRY_RUN disabled — live trading logic goes here")
+    # Example:
+    # client.place_order(product_id="BTC-USD", side="buy", price="30000", size="0.001")
