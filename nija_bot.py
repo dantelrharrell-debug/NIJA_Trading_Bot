@@ -24,6 +24,11 @@ client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
 
 if DRY_RUN:
     print("✅ DRY_RUN: Client instantiated successfully (no API calls executed)")
+
+if not DRY_RUN:
+    accounts = client.get_accounts()
+    print(accounts)
+
 #!/usr/bin/env python3
 """
 Robust nija_bot startup script.
