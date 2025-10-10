@@ -1,3 +1,29 @@
+# nija_bot.py
+
+# -----------------------------
+# 1️⃣ Imports & setup
+# -----------------------------
+from coinbase.rest import RESTClient
+import os
+
+# -----------------------------
+# 2️⃣ Load API keys
+# -----------------------------
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+# -----------------------------
+# 3️⃣ DRY_RUN flag for testing
+# -----------------------------
+DRY_RUN = True  # Set True until your PEM/API key works
+
+# -----------------------------
+# 4️⃣ Instantiate client
+# -----------------------------
+client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
+
+if DRY_RUN:
+    print("✅ DRY_RUN: Client instantiated successfully (no API calls executed)")
 #!/usr/bin/env python3
 """
 Robust nija_bot startup script.
