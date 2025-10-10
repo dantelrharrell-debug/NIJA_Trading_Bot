@@ -1,95 +1,66 @@
 #!/usr/bin/env python3
-import os, sys
+import os
+import sys
+import time
 from pathlib import Path
-ROOT = Path(__file__).parent.resolve()
-print("🚀 Starting Nija Trading Bot (diagnostic mode)")
-print("Python:", sys.executable)
-print("Working dir:", ROOT)
-print("sys.path head:", sys.path[:4])
 
-# Try to load .env locally (optional)
+# --------------------------------------------
+# Ensure vendor folder is in sys.path (for Render)
+# --------------------------------------------
+ROOT = Path(__file__).parent.resolve()
+VENDOR_DIR = str(ROOT / "vendor")
+if VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
+    print("✅ Added vendor to sys.path:", VENDOR_DIR)
+
+# --------------------------------------------
+# Load environment variables
+# --------------------------------------------
 try:
     from dotenv import load_dotenv
     load_dotenv()
-    print("✅ Loaded .env (if present)")
+    print("✅ Loaded .env file (if present)")
 except Exception:
-    print("ℹ️ python-dotenv not installed or .env missing - that's OK on Render")
+    print("ℹ️ python-dotenv not found or .env missing (OK on Render)")
 
-# Show pip-installed packages quickly (short list)
-try:
-    import pkgutil
-    tops = [m.name for m in pkgutil.iter_modules()][:60]
-    print("Top site packages (first 60):", tops[:30])
-except Exception:
-    pass
-
-# -------------------
-# Try import coinbase_advanced_py
-# -------------------
-try:
-    import coinbase_advanced_py as cb
-    print("✅ Imported coinbase_advanced_py:", getattr(cb, "__version__", "unknown"))
-except Exception as e:
-    print("❌ ERROR importing coinbase_advanced_py:", type(e).__name__, e)
-    print("Hint: ensure coinbase-advanced-py==1.8.2 is in requirements.txt and Render Start Command is 'bash start.sh'")
-    print("sys.path sample:", sys.path[:10])
-    raise SystemExit(1)
-
-# -------------------
-# Read env vars
-# -------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-SANDBOX = os.getenv("SANDBOX", "True").lower() in ("1","true","yes")
-DRY_RUN = os.getenv("DRY_RUN", "True").lower() in ("1","true","yes")
+SANDBOX = os.getenv("SANDBOX", "True").lower() in ("1", "true", "yes")
+DRY_RUN = os.getenv("DRY_RUN", "True").lower() in ("1", "true", "yes")
 
 if not API_KEY or not API_SECRET:
-    print("⚠️ Missing API_KEY or API_SECRET environment variables.")
-    print("Set them in Render → Service → Environment (API_KEY, API_SECRET). Bot will continue only if DRY_RUN=True")
+    print("⚠️ Missing API_KEY or API_SECRET environment variables!")
     if not DRY_RUN:
         raise SystemExit(1)
 
-# -------------------
-# Initialize client
-# -------------------
+# --------------------------------------------
+# Import coinbase_advanced_py functions
+# --------------------------------------------
 try:
-    # coinbase_advanced_py.Client may accept sandbox kwarg; adapt if your vendored wrapper differs
-    client = cb.Client(API_KEY or "fake", API_SECRET or "fake", sandbox=SANDBOX)
-    print("🚀 Coinbase client created:", type(client))
-except AttributeError:
-    print("❌ coinbase_advanced_py doesn't expose 'Client' attribute in this version.")
-    print("Check the installed module API or vendored package.")
+    import coinbase_advanced_py as cb
+    print("✅ Imported coinbase_advanced_py (function-based API)")
+except ModuleNotFoundError:
+    print("❌ Module coinbase_advanced_py not found in vendor or site-packages")
     raise SystemExit(1)
-except Exception as e:
-    print("❌ Error when initializing client:", type(e).__name__, e)
-    if not DRY_RUN:
-        raise SystemExit(1)
 
-# -------------------
-# Quick test call (safe)
-# -------------------
+# --------------------------------------------
+# Example: Fetch accounts/balances
+# --------------------------------------------
 try:
-    if hasattr(client, "get_account_balances"):
-        print("Testing get_account_balances() ...")
-        balances = client.get_account_balances()
-        print("💰 Balances:", balances)
-    elif hasattr(client, "get_accounts"):
-        print("Testing get_accounts() ...")
-        accounts = client.get_accounts()
-        print("💰 Accounts:", accounts)
-    else:
-        print("ℹ️ No account/balance method detected on client. Attributes:", dir(client)[:30])
+    accounts = cb.get_accounts(api_key=API_KEY, api_secret=API_SECRET)
+    print("💰 Accounts/balances:")
+    for acc in accounts:
+        print(f" - {acc['currency']}: {acc['available']} available")
 except Exception as e:
-    print("⚠️ Test call failed:", type(e).__name__, e)
+    print("❌ Failed to fetch accounts:", type(e).__name__, e)
 
-# -------------------
-# Main loop placeholder
-# -------------------
-import time
-print("✅ Diagnostics complete. Entering placeholder loop (CTRL+C to stop). DRY_RUN =", DRY_RUN)
+# --------------------------------------------
+# Main bot loop (placeholder for trading logic)
+# --------------------------------------------
 try:
     while True:
-        print("heartbeat — bot alive. DRY_RUN:", DRY_RUN)
+        print(f"✅ Nija bot heartbeat — DRY_RUN={DRY_RUN}, SANDBOX={SANDBOX}")
+        # Example: you could call cb.get_account_balances() here if needed
         time.sleep(30)
 except KeyboardInterrupt:
-    print("🛑 Stopped by user")
+    print("🛑 Nija bot stopped by user")
