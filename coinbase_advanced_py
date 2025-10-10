@@ -1,15 +1,13 @@
-from coinbase_advanced_py import Client
 import os
 from dotenv import load_dotenv
+import coinbase_advanced_py as cb  # no Client class here
 
+# Load environment variables
 load_dotenv()
-
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
-client = Client(API_KEY, API_SECRET)
-
-# Example: fetch accounts/balances
-accounts = client.get_accounts()
+# Example: fetch accounts/balances using the functions provided
+accounts = cb.get_accounts(api_key=API_KEY, api_secret=API_SECRET)
 for acc in accounts:
     print(acc['currency'], acc['available'])
