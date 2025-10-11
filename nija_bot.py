@@ -1,40 +1,45 @@
 import os
 import threading
-import importlib.util
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import coinbase_advanced_py as cb
+import time
 
-# -------------------------------
-# Config
-# -------------------------------
-PORT = int(os.getenv("PORT", "8080"))
+# =========================
+# Coinbase API Setup
+# =========================
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
 
-# Automatically find the bot module
-BOT_MODULE_NAME = None
-BOT_FUNCTION_NAME = "start_bot"
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set in environment variables")
 
-for file in os.listdir("."):
-    if file.endswith(".py") and file not in ("nija_bot.py", "__init__.py"):
-        spec = importlib.util.spec_from_file_location("bot_module", file)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        if hasattr(module, BOT_FUNCTION_NAME):
-            BOT_MODULE_NAME = file[:-3]  # remove .py
-            break
+client = cb.Client(API_KEY, API_SECRET)
+print("✅ Coinbase client initialized")
 
-if not BOT_MODULE_NAME:
-    raise SystemExit("❌ No bot module with a 'start_bot()' function found in this folder!")
+# =========================
+# Your trading bot logic
+# =========================
+def start_bot():
+    print("🚀 Nija bot started")
+    while True:
+        try:
+            # Example: get balances (replace with your real trading logic)
+            balances = client.get_account_balances()
+            print("💰 Balances:", balances)
+        except Exception as e:
+            print("⚠️ Error in bot loop:", e)
+        time.sleep(5)  # Adjust sleep for your trading frequency
 
-bot_module = importlib.import_module(BOT_MODULE_NAME)
-print(f"✅ Loaded bot from {BOT_MODULE_NAME}.py")
+# =========================
+# Start bot in background thread
+# =========================
+threading.Thread(target=start_bot, daemon=True).start()
 
-# -------------------------------
-# Start the bot in a background thread
-# -------------------------------
-threading.Thread(target=getattr(bot_module, BOT_FUNCTION_NAME), daemon=True).start()
-
-# -------------------------------
+# =========================
 # Minimal HTTP server for Render
-# -------------------------------
+# =========================
+PORT = int(os.getenv("PORT", 8080))
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
