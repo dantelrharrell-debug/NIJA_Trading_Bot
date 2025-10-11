@@ -49,3 +49,7 @@ if pem_temp_path:
         print("❌ Failed to start Coinbase client:", e)
 else:
     print("❌ PEM file not available, cannot start client")
+
+if pem_temp_path:
+    with open(pem_temp_path, "rb") as f:
+        print("✅ PEM file content preview:", f.read(64), "...")
