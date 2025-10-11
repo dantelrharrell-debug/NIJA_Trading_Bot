@@ -1,14 +1,23 @@
-#!/bin/bash
-# ==========================
-# build.sh
-# ==========================
-# Ensure we are in the correct directory
-echo "📦 Starting build process..."
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Upgrade pip in the virtual environment
-python3 -m pip install --upgrade pip
+echo "🚀 build.sh: creating virtualenv and installing dependencies..."
 
-# Install all dependencies from requirements.txt
-python3 -m pip install -r requirements.txt
+# create a venv inside the repo
+python3 -m venv .venv
 
-echo "✅ Build complete."
+# use the venv pip to install packages
+. .venv/bin/activate
+
+echo "🔹 Upgrading pip inside venv..."
+python -m pip install --upgrade pip
+
+echo "🔹 Ensuring coinbase-advanced-py pinned version..."
+python -m pip install --force-reinstall coinbase-advanced-py==1.8.2
+
+echo "🔹 Installing requirements.txt..."
+if [ -f requirements.txt ]; then
+  python -m pip install -r requirements.txt
+fi
+
+echo "✅ build.sh finished. venv ready at .venv/"
