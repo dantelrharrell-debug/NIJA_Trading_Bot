@@ -1,9 +1,9 @@
 #!/bin/bash
-# upgrade pip first
+# Upgrade pip
 python3 -m pip install --upgrade pip
 
-# install dependencies from requirements.txt
+# Install requirements in the virtual environment
 python3 -m pip install --no-cache-dir -r requirements.txt
 
-# run your bot
+# Run your bot
 python3 nija_bot.py
