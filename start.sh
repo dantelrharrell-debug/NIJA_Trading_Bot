@@ -1,8 +1,8 @@
 #!/bin/bash
 echo "🚀 Starting Nija bot..."
 
-# Activate virtual environment (if you’re using one)
+# Activate virtual environment
 source .venv/bin/activate
 
-# Run your Python bot
+# Run the bot
 python3 nija_bot.py
