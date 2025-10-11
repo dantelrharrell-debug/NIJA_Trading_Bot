@@ -1,32 +1,39 @@
 #!/bin/bash
-# start.sh for Nija bot on Render
 
-# Exit immediately if a command exits with a non-zero status
-set -e
-
-echo "🚀 Starting Nija bot setup..."
-
+# =========================
 # Activate virtual environment
+# =========================
 if [ -d ".venv" ]; then
-    echo "✅ Activating virtual environment"
+    echo "🔹 Activating virtual environment..."
     source .venv/bin/activate
 else
-    echo "⚠️ .venv not found, creating one..."
+    echo "⚠️ Virtual environment not found, creating one..."
     python3 -m venv .venv
     source .venv/bin/activate
 fi
 
-# Upgrade pip
-echo "⬆️ Upgrading pip..."
-pip install --upgrade pip
-
-# Install dependencies
+# =========================
+# Ensure all requirements are installed
+# =========================
 echo "📦 Installing requirements..."
+pip install --upgrade pip
 pip install -r requirements.txt
 
-# Ensure coinbase_advanced_py is installed
-pip install coinbase-advanced-py==1.8.2
+# =========================
+# Decode PEM if using API_PEM_B64
+# =========================
+if [ ! -f "/tmp/nija_api_key.pem" ] && [ ! -z "$API_PEM_B64" ]; then
+    echo "🔑 Decoding API PEM..."
+    python3 - <<END
+import os, base64
+decoded = base64.b64decode(os.getenv("API_PEM_B64"))
+with open("/tmp/nija_api_key.pem", "wb") as f:
+    f.write(decoded)
+END
+fi
 
-# Run the bot
-echo "🤖 Running nija_bot.py..."
-python3 nija_bot.py
+# =========================
+# Start the Nija bot
+# =========================
+echo "🚀 Starting Nija bot..."
+./.venv/bin/python3 nija_bot.py
