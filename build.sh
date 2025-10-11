@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "🛠️  build.sh (user-site install) starting..."
+echo "🛠️  build.sh starting..."
 
-# ensure user-site bin is on PATH for any scripts installed by pip
-export PATH="$HOME/.local/bin:$PATH"
+# 1) Create .venv if missing
+if [ ! -d ".venv" ]; then
+  echo "Creating virtualenv .venv..."
+  python3 -m venv .venv
+fi
 
-# upgrade pip for this Python
-python3 -m pip install --upgrade --user pip setuptools wheel
+# 2) Use venv's python to upgrade pip and install deps
+echo "Using venv python: ./.venv/bin/python"
+./.venv/bin/python -m pip install --upgrade pip setuptools wheel
 
-# install requirements into user site-packages
-python3 -m pip install --user -r requirements.txt
+# 3) Install requirements into the venv
+./.venv/bin/python -m pip install -r requirements.txt
 
-# install coinbase explicitly (harmless if already installed)
-python3 -m pip install --user coinbase-advanced-py==1.8.2
+# 4) Ensure coinbase lib exists (explicit)
+./.venv/bin/python -m pip install coinbase-advanced-py==1.8.2
 
-# quick sanity check
-python3 -c "import sys, site; print('python', sys.executable); import coinbase_advanced_py; print('✅ coinbase_advanced_py import ok')"
+# 5) quick import check (fails build if import broken)
+./.venv/bin/python -c "import coinbase_advanced_py; print('✅ coinbase_advanced_py import ok')"
 
 echo "🛠️  build.sh finished"
