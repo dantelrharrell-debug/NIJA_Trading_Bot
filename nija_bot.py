@@ -1,35 +1,40 @@
 import os
-import base64
 import threading
+import importlib.util
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# -----------------------------
-# Decode your API PEM key
-# -----------------------------
-API_PEM_B64 = os.getenv("API_PEM_B64")
-if not API_PEM_B64:
-    raise SystemExit("❌ Missing API_PEM_B64 environment variable")
-
-decoded_pem = base64.b64decode(API_PEM_B64)
-pem_path = "/tmp/nija_api_key.pem"
-with open(pem_path, "wb") as f:
-    f.write(decoded_pem)
-print(f"✅ PEM decoded and written to {pem_path}")
-
-# -----------------------------
-# Import your bot logic
-# -----------------------------
-# Replace 'nija_bot_main' with your actual bot module filename (without .py)
-from nija_bot_main import start_bot  
-
-# Start the bot in a separate thread
-threading.Thread(target=lambda: start_bot(pem_path), daemon=True).start()
-
-# -----------------------------
-# Minimal HTTP server (Render requires at least one open port)
-# -----------------------------
+# -------------------------------
+# Config
+# -------------------------------
 PORT = int(os.getenv("PORT", "8080"))
 
+# Automatically find the bot module
+BOT_MODULE_NAME = None
+BOT_FUNCTION_NAME = "start_bot"
+
+for file in os.listdir("."):
+    if file.endswith(".py") and file not in ("nija_bot.py", "__init__.py"):
+        spec = importlib.util.spec_from_file_location("bot_module", file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if hasattr(module, BOT_FUNCTION_NAME):
+            BOT_MODULE_NAME = file[:-3]  # remove .py
+            break
+
+if not BOT_MODULE_NAME:
+    raise SystemExit("❌ No bot module with a 'start_bot()' function found in this folder!")
+
+bot_module = importlib.import_module(BOT_MODULE_NAME)
+print(f"✅ Loaded bot from {BOT_MODULE_NAME}.py")
+
+# -------------------------------
+# Start the bot in a background thread
+# -------------------------------
+threading.Thread(target=getattr(bot_module, BOT_FUNCTION_NAME), daemon=True).start()
+
+# -------------------------------
+# Minimal HTTP server for Render
+# -------------------------------
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
