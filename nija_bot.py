@@ -3,42 +3,37 @@ import base64
 import tempfile
 from coinbase.rest import RESTClient
 
-# --- PEM Handling ---
+# --- Load PEM from environment ---
 API_PEM_B64 = os.getenv("API_PEM_B64")
 pem_temp_path = None
 
-if API_PEM_B64:
+if not API_PEM_B64:
+    print("❌ Environment variable API_PEM_B64 not set")
+else:
     try:
-        # Clean up the string: remove spaces/newlines
+        # 1. Clean base64: remove whitespace/newlines
         API_PEM_B64_clean = ''.join(API_PEM_B64.strip().split())
-        # Pad to multiple of 4
+        
+        # 2. Pad base64 to multiple of 4 if necessary
         missing_padding = len(API_PEM_B64_clean) % 4
         if missing_padding != 0:
             API_PEM_B64_clean += '=' * (4 - missing_padding)
-
-        # Decode to bytes
-        pem_bytes = base64.b64decode(API_PEM_B64_clean)
-
-        # Check if this is already ASCII PEM (starts with "-----")
-        if pem_bytes.startswith(b"-----"):
-            mode = "w"  # ASCII text
-            pem_content = pem_bytes.decode("utf-8")
-        else:
-            mode = "wb"  # Binary DER
-            pem_content = pem_bytes
-
-        # Write temp PEM file
-        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode=mode)
-        tf.write(pem_content)
+        
+        # 3. Decode to bytes (never UTF-8!)
+        API_PEM_BYTES = base64.b64decode(API_PEM_B64_clean)
+        
+        # 4. Write bytes to temporary PEM file
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
+        tf.write(API_PEM_BYTES)
         tf.flush()
         tf.close()
         pem_temp_path = tf.name
-        print("✅ Wrote PEM to", pem_temp_path)
-
+        print(f"✅ Wrote PEM to {pem_temp_path}")
+        
     except Exception as e:
         print("❌ Failed to decode/write PEM:", e)
 
-# --- Coinbase REST Client ---
+# --- Start Coinbase REST client ---
 if pem_temp_path:
     try:
         client = RESTClient(key_file=pem_temp_path)
@@ -49,7 +44,3 @@ if pem_temp_path:
         print("❌ Failed to start Coinbase client:", e)
 else:
     print("❌ PEM file not available, cannot start client")
-
-if pem_temp_path:
-    with open(pem_temp_path, "rb") as f:
-        print("✅ PEM file content preview:", f.read(64), "..."
