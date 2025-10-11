@@ -1,4 +1,24 @@
 import os
+import base64
+import coinbase_advanced_py as cb   # ✅ This must be here
+
+# Decode your PEM if you’re using one
+API_PEM_B64 = os.getenv("API_PEM_B64")
+decoded = base64.b64decode(API_PEM_B64)
+with open("/tmp/nija_api_key.pem", "wb") as f:
+    f.write(decoded)
+
+# Initialize the Coinbase client
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+client = cb.Client(API_KEY, API_SECRET)
+
+# Example: check balances
+balances = client.get_account_balances()
+print(balances)
+
+# ...rest of your bot logic
+import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import coinbase_advanced_py as cb
