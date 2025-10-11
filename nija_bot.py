@@ -1,151 +1,90 @@
-#!/usr/bin/env python3
 import os
-import time
+import base64
+import tempfile
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from coinbase.rest import RESTClient
-import pandas as pd
 
-# ===============================
+# -------------------------------
 # 🔐 Load Coinbase credentials
-# ===============================
+# -------------------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
+API_PEM_B64 = os.getenv("API_PEM_B64")
 
-if not API_KEY or not API_SECRET:
-    raise SystemExit("❌ Missing API_KEY or API_SECRET environment variables")
+if not all([API_KEY, API_SECRET, API_PEM_B64]):
+    raise SystemExit("❌ Missing API_KEY, API_SECRET, or API_PEM_B64")
 
-# ===============================
-# ✅ Initialize Coinbase client
-# ===============================
+# -------------------------------
+# 🔓 Decode PEM key and write temp file
+# -------------------------------
+pem_temp_path = None
+
+def bytes_is_pem(b: bytes) -> bool:
+    return b.startswith(b"-----BEGIN")
+
 try:
-    client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
-    print("✅ RESTClient created using API_KEY + API_SECRET")
+    clean = ''.join(API_PEM_B64.strip().split())
+    pad = len(clean) % 4
+    if pad:
+        clean += '=' * (4 - pad)
+
+    decoded = base64.b64decode(clean)
+
+    if bytes_is_pem(decoded):
+        pem_bytes = decoded
+        print("Decoded input is PEM text.")
+    else:
+        print("Decoded input looks like DER/binary; converting to PEM wrapper.")
+        b64_der = base64.encodebytes(decoded)
+        pem_bytes = b"-----BEGIN PRIVATE KEY-----\n" + b64_der + b"-----END PRIVATE KEY-----\n"
+
+    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
+    tf.write(pem_bytes)
+    tf.flush(); tf.close()
+    pem_temp_path = tf.name
+    print("✅ Wrote PEM to", pem_temp_path)
+
 except Exception as e:
-    raise SystemExit(f"❌ Failed to start Coinbase client: {type(e).__name__} {e}")
+    raise SystemExit(f"❌ Failed to decode/write PEM: {type(e).__name__} {e}")
 
-# ===============================
-# Configurable trading parameters
-# ===============================
-TRADING_SYMBOL = "BTC-USD"
-MIN_RISK_PCT = 0.02  # 2%
-MAX_RISK_PCT = 0.10  # 10%
-VWAP_LOOKBACK = 14
-RSI_PERIOD = 14
-CHECK_INTERVAL = 30  # seconds
-
-# ===============================
-# Fetch balances
-# ===============================
-def get_balances():
+# -------------------------------
+# 🤖 Bot main logic
+# -------------------------------
+def start_bot():
     try:
-        balances = client.get_account_balances()
-        balance_dict = {acct['currency']: float(acct['available']) for acct in balances}
-        return balance_dict
+        # Use either API_KEY/API_SECRET or PEM file, not both
+        client = RESTClient(key_file=pem_temp_path)
+        print("✅ RESTClient created using key_file")
     except Exception as e:
-        print("❌ Failed to fetch balances:", type(e).__name__, e)
-        return {}
+        raise SystemExit(f"❌ Failed to start Coinbase client: {type(e).__name__} {e}")
 
-# ===============================
-# Fetch historical candle data
-# ===============================
-def get_candles(symbol=TRADING_SYMBOL, granularity=60, limit=50):
-    """
-    Returns a pandas DataFrame of historical candles for VWAP/RSI calculations
-    granularity=60 -> 1 min candles
-    """
-    try:
-        candles = client.get_candles(product_id=symbol, granularity=granularity, limit=limit)
-        df = pd.DataFrame(candles)
-        df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
-        df['close'] = df['close'].astype(float)
-        df['volume'] = df['volume'].astype(float)
-        return df
-    except Exception as e:
-        print("❌ Failed to fetch candles:", type(e).__name__, e)
-        return pd.DataFrame()
-
-# ===============================
-# Calculate VWAP
-# ===============================
-def calculate_vwap(df):
-    return (df['close'] * df['volume']).sum() / df['volume'].sum()
-
-# ===============================
-# Calculate RSI
-# ===============================
-def calculate_rsi(df, period=RSI_PERIOD):
-    delta = df['close'].diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi.iloc[-1]
-
-# ===============================
-# Determine trade size
-# ===============================
-def get_trade_amount(balance, price):
-    risk = min(max(balance['USD'] * MIN_RISK_PCT, balance['USD'] * MAX_RISK_PCT), balance['USD'] * MIN_RISK_PCT)
-    return round(risk / price, 6)
-
-# ===============================
-# Place market buy/sell
-# ===============================
-def place_order(side, size):
-    try:
-        order = client.create_order(
-            product_id=TRADING_SYMBOL,
-            side=side,
-            type="market",
-            size=size
-        )
-        print(f"✅ Placed {side.upper()} order: {size} {TRADING_SYMBOL}")
-        return order
-    except Exception as e:
-        print(f"❌ Failed to place {side} order:", type(e).__name__, e)
-        return None
-
-# ===============================
-# Main trading loop
-# ===============================
-def main_loop():
-    print("🚀 Nija bot running...")
+    # --- Example bot loop (replace with your bot logic) ---
+    import time
     while True:
-        balances = get_balances()
-        if not balances or 'USD' not in balances:
-            print("❌ No USD balance, skipping cycle")
-            time.sleep(CHECK_INTERVAL)
-            continue
+        print("🤖 Nija bot running...")
+        # Example: check balances or place trades here
+        try:
+            balances = client.get_account_balances()
+            print("Balances:", balances)
+        except Exception as e:
+            print("⚠️ Error fetching balances:", e)
+        time.sleep(60)  # Run every minute
 
-        df = get_candles()
-        if df.empty:
-            time.sleep(CHECK_INTERVAL)
-            continue
+# -------------------------------
+# 🌐 Minimal HTTP server for Render
+# -------------------------------
+PORT = int(os.getenv("PORT", "8080"))
 
-        vwap = calculate_vwap(df)
-        rsi = calculate_rsi(df)
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Nija bot is running!")
 
-        current_price = df['close'].iloc[-1]
+# Start bot in a separate thread
+threading.Thread(target=start_bot, daemon=True).start()
 
-        print(f"💹 Price: {current_price}, VWAP: {vwap}, RSI: {rsi}")
-
-        # --- Aggressive but safe trade logic
-        if current_price > vwap and rsi < 70:
-            # Buy signal
-            size = get_trade_amount(balances, current_price)
-            place_order("buy", size)
-        elif current_price < vwap and rsi > 30:
-            # Sell signal
-            size = get_trade_amount(balances, current_price)
-            place_order("sell", size)
-        else:
-            print("ℹ️ No trade signal this cycle")
-
-        time.sleep(CHECK_INTERVAL)
-
-# ===============================
-# Start bot
-# ===============================
-if __name__ == "__main__":
-    main_loop()
+httpd = HTTPServer(("", PORT), Handler)
+print(f"✅ Web server listening on port {PORT}")
+httpd.serve_forever()
