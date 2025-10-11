@@ -1,68 +1,52 @@
+# nija_bot.py
 import os
-import sys
 import base64
 import tempfile
+import traceback
+from coinbase.rest import RESTClient
 
-# Try Coinbase library imports
-try:
-    import coinbase_advanced_py as cb
-except ModuleNotFoundError:
-    print("❌ coinbase_advanced_py not installed. Make sure build.sh installed dependencies correctly.")
-    sys.exit(1)
-
-# --- Load API keys from environment ---
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-API_PEM_B64 = os.getenv("API_PEM_B64")  # Optional, only if you need PEM auth
+def print_exc(label, e):
+    print(f"❌ {label}: {type(e).__name__}: {e}")
+    traceback.print_exc()
 
 pem_temp_path = None
-client = None
+API_PEM_B64 = os.getenv("API_PEM_B64")
 
-# --- PEM Handling if API_PEM_B64 exists ---
 if API_PEM_B64:
     try:
-        # Remove whitespace and fix base64 padding
-        API_PEM_B64_clean = ''.join(API_PEM_B64.strip().split())
-        missing_padding = len(API_PEM_B64_clean) % 4
-        if missing_padding != 0:
-            API_PEM_B64_clean += '=' * (4 - missing_padding)
-
-        # Decode to bytes (do NOT decode as UTF-8)
-        pem_bytes = base64.b64decode(API_PEM_B64_clean)
-
-        # Write to temp PEM file
+        # remove whitespace and auto-pad
+        clean = "".join(API_PEM_B64.strip().split())
+        pad = len(clean) % 4
+        if pad != 0:
+            clean += "=" * (4 - pad)
+        pem_bytes = base64.b64decode(clean)
         tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
         tf.write(pem_bytes)
         tf.flush()
         tf.close()
         pem_temp_path = tf.name
-        print(f"✅ Wrote PEM to {pem_temp_path}")
-
+        print("✅ Wrote PEM to", pem_temp_path)
     except Exception as e:
-        print(f"❌ Failed to decode/write PEM: {e}")
-        pem_temp_path = None
+        print_exc("Failed to decode/write PEM", e)
 
-# --- Initialize Coinbase client ---
+# Create client
+client = None
 try:
     if pem_temp_path:
-        client = cb.RESTClient(key_file=pem_temp_path)
-    elif API_KEY and API_SECRET:
-        client = cb.Client(API_KEY, API_SECRET)
+        client = RESTClient(key_file=pem_temp_path)
     else:
-        raise ValueError("No valid Coinbase credentials found. Set API_KEY/API_SECRET or API_PEM_B64")
+        # fallback: allow API_KEY/API_SECRET env usage if you prefer
+        api_key = os.getenv("API_KEY")
+        api_secret = os.getenv("API_SECRET")
+        if api_key and api_secret:
+            # rest client may accept those args depending on library usage
+            client = RESTClient(api_key=api_key, api_secret=api_secret)
+        else:
+            raise SystemExit("❌ No PEM file and no API_KEY/API_SECRET - cannot create client")
 
-    # Test: fetch accounts
-    accounts = client.get_account_balances()
-    print("✅ Coinbase client started successfully!")
-    print(accounts)
-
+    # quick smoke test
+    accounts = client.get_accounts()
+    print("✅ Coinbase REST client started; accounts fetched:", accounts)
 except Exception as e:
-    print(f"❌ Failed to start Coinbase client: {e}")
-    sys.exit(1)
-
-# --- Your trading bot logic starts here ---
-print("🚀 NIJA bot is live and ready to trade!")
-
-# Example: add more trading logic below
-# client.buy('BTC', 0.01)
-# client.sell('ETH', 0.01)
+    print_exc("Failed to start Coinbase client", e)
+    raise
