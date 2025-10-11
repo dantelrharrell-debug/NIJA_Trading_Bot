@@ -1,15 +1,14 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting build..."
-
 echo "🔹 Upgrading pip..."
 python3 -m pip install --upgrade pip
 
-echo "🔹 Ensuring coinbase-advanced-py is installed..."
+echo "🔹 Installing coinbase-advanced-py..."
 python3 -m pip install --force-reinstall coinbase-advanced-py==1.8.2
 
-echo "🔹 Installing other requirements from requirements.txt..."
+echo "🔹 Installing other requirements..."
 python3 -m pip install -r requirements.txt
 
-echo "✅ All dependencies installed successfully!"
+echo "✅ Build step finished. Starting bot..."
+python3 nija_bot.py
