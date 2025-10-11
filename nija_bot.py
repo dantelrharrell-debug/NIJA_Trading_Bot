@@ -1,3 +1,29 @@
+import os, base64, tempfile
+import coinbase_advanced_py as cb   # library name to import
+
+# decode base64 PEM if you have one — optional
+API_PEM_B64 = os.getenv("API_PEM_B64")
+if API_PEM_B64:
+    # ensure padding & clean
+    s = ''.join(API_PEM_B64.strip().split())
+    pad = len(s) % 4
+    if pad: s += '=' * (4 - pad)
+    pem_bytes = base64.b64decode(s)
+    pem_path = "/tmp/nija_api_key.pem"
+    with open(pem_path, "wb") as f:
+        f.write(pem_bytes)
+    print("✅ Wrote PEM to", pem_path)
+
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+# create client - adjust to library usage; coinbase-advanced-py offers RESTClient in coinbase.rest
+from coinbase.rest import RESTClient
+client = RESTClient(key_file=pem_path) if API_PEM_B64 else RESTClient(api_key=API_KEY, api_secret=API_SECRET)
+
+print("✅ Coinbase client created, starting bot...")
+# ...rest of bot logic
+
 try:
     import coinbase_advanced_py as cb
 except ModuleNotFoundError:
