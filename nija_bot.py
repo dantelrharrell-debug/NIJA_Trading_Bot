@@ -52,4 +52,4 @@ else:
 
 if pem_temp_path:
     with open(pem_temp_path, "rb") as f:
-        print("✅ PEM file content preview:", f.read(64), "...")
+        print("✅ PEM file content preview:", f.read(64), "..."
