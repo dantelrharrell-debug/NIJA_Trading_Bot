@@ -1,22 +1,27 @@
+# nija_bot.py
+
 import os
 import base64
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import time
-import coinbase_advanced_py as cb   # Only once, at the top
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ✅ Coinbase library
+import coinbase_advanced_py as cb
 
 # =========================
-# Decode your PEM key (if using one)
+# Decode PEM key if provided
 # =========================
 API_PEM_B64 = os.getenv("API_PEM_B64")
 if API_PEM_B64:
     decoded = base64.b64decode(API_PEM_B64)
-    with open("/tmp/nija_api_key.pem", "wb") as f:
+    pem_path = "/tmp/nija_api_key.pem"
+    with open(pem_path, "wb") as f:
         f.write(decoded)
-    print("✅ PEM key decoded and saved")
+    print(f"🔑 PEM key decoded and written to {pem_path}")
 
 # =========================
-# Coinbase API Setup
+# Initialize Coinbase client
 # =========================
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
@@ -28,21 +33,19 @@ client = cb.Client(API_KEY, API_SECRET)
 print("✅ Coinbase client initialized")
 
 # =========================
-# Your trading bot logic
+# Trading bot logic
 # =========================
 def start_bot():
     print("🚀 Nija bot started")
     while True:
         try:
-            balances = client.get_account_balances()
+            balances = client.get_account_balances()  # Example
             print("💰 Balances:", balances)
         except Exception as e:
             print("⚠️ Error in bot loop:", e)
-        time.sleep(5)  # Adjust for your trading frequency
+        time.sleep(5)  # Adjust as needed
 
-# =========================
-# Start bot in background thread
-# =========================
+# Start bot in a background thread
 threading.Thread(target=start_bot, daemon=True).start()
 
 # =========================
