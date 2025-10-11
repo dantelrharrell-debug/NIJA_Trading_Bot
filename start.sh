@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-echo "🚀 start.sh starting..."
+# Activate virtual environment
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+else
+    echo "❌ Virtual environment not found. Creating..."
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install --upgrade pip
+    pip install -r requirements.txt
+fi
 
-# Use the venv python directly to avoid shell `source` differences
-VENV_PY="./.venv/bin/python"
-echo "Using python: $($VENV_PY -V)"
-
-# Optional: print which packages are available (debug)
-$VENV_PY -c "import sys, pkgutil; print('sys.executable=', sys.executable); print('coinbase package found=', pkgutil.find_loader('coinbase') is not None)"
-
-# Run your bot
-$VENV_PY nija_bot.py
+echo "🚀 Starting Nija bot..."
+python3 nija_bot.py
