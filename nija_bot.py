@@ -1,37 +1,33 @@
 import os
 import base64
-import tempfile
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ---- Step 1: Decode PEM and write to temp file ----
+# -----------------------------
+# Decode your API PEM key
+# -----------------------------
 API_PEM_B64 = os.getenv("API_PEM_B64")
 if not API_PEM_B64:
     raise SystemExit("❌ Missing API_PEM_B64 environment variable")
 
-try:
-    decoded_pem = base64.b64decode(API_PEM_B64)
-    pem_text = decoded_pem.decode("utf-8")
-    if not pem_text.startswith("-----BEGIN PRIVATE KEY-----"):
-        raise ValueError("Decoded PEM does not start with expected header")
-    
-    # Write to a temporary file
-    pem_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")
-    pem_file.write(decoded_pem)
-    pem_file.close()
-    print(f"✅ PEM decoded and written to {pem_file.name}")
-except Exception as e:
-    raise SystemExit(f"❌ Failed to decode/write PEM: {e}")
+decoded_pem = base64.b64decode(API_PEM_B64)
+pem_path = "/tmp/nija_api_key.pem"
+with open(pem_path, "wb") as f:
+    f.write(decoded_pem)
+print(f"✅ PEM decoded and written to {pem_path}")
 
-# ---- Step 2: Import your bot ----
-# Make sure start_bot(pem_path) is your bot's entry point accepting a PEM path
-from nija_bot_logic import start_bot  # Replace with your actual bot module
+# -----------------------------
+# Import your bot logic
+# -----------------------------
+# Replace 'nija_bot_main' with your actual bot module filename (without .py)
+from nija_bot_main import start_bot  
 
-# ---- Step 3: Start bot in a background thread ----
-threading.Thread(target=start_bot, args=(pem_file.name,), daemon=True).start()
-print("🚀 Nija bot started in background thread")
+# Start the bot in a separate thread
+threading.Thread(target=lambda: start_bot(pem_path), daemon=True).start()
 
-# ---- Step 4: Minimal HTTP server to satisfy Render ----
+# -----------------------------
+# Minimal HTTP server (Render requires at least one open port)
+# -----------------------------
 PORT = int(os.getenv("PORT", "8080"))
 
 class Handler(BaseHTTPRequestHandler):
