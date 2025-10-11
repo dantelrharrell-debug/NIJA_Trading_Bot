@@ -1,46 +1,32 @@
 import os
-import base64
-import tempfile
-from coinbase.rest import RESTClient
+import coinbase_advanced_py as cb
+import time
 
-# --- Load PEM from environment ---
-API_PEM_B64 = os.getenv("API_PEM_B64")
-pem_temp_path = None
+# --- Load environment variables ---
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+PASSPHRASE = os.getenv("PASSPHRASE")  # Optional, only if your Coinbase API requires it
 
-if not API_PEM_B64:
-    print("❌ Environment variable API_PEM_B64 not set")
-else:
-    try:
-        # 1. Clean base64: remove whitespace/newlines
-        API_PEM_B64_clean = ''.join(API_PEM_B64.strip().split())
-        
-        # 2. Pad base64 to multiple of 4 if necessary
-        missing_padding = len(API_PEM_B64_clean) % 4
-        if missing_padding != 0:
-            API_PEM_B64_clean += '=' * (4 - missing_padding)
-        
-        # 3. Decode to bytes (never UTF-8!)
-        API_PEM_BYTES = base64.b64decode(API_PEM_B64_clean)
-        
-        # 4. Write bytes to temporary PEM file
-        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
-        tf.write(API_PEM_BYTES)
-        tf.flush()
-        tf.close()
-        pem_temp_path = tf.name
-        print(f"✅ Wrote PEM to {pem_temp_path}")
-        
-    except Exception as e:
-        print("❌ Failed to decode/write PEM:", e)
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
 
-# --- Start Coinbase REST client ---
-if pem_temp_path:
-    try:
-        client = RESTClient(key_file=pem_temp_path)
-        accounts = client.get_accounts()
-        print("✅ Coinbase client started successfully!")
-        print(accounts)
-    except Exception as e:
-        print("❌ Failed to start Coinbase client:", e)
-else:
-    print("❌ PEM file not available, cannot start client")
+# --- Initialize Coinbase client ---
+try:
+    client = cb.Client(API_KEY, API_SECRET, passphrase=PASSPHRASE)
+    print("✅ Coinbase client started successfully!")
+except Exception as e:
+    raise SystemExit(f"❌ Failed to start Coinbase client: {e}")
+
+# --- Example: check balances ---
+try:
+    balances = client.get_account_balances()
+    print("💰 Current balances:")
+    for account in balances:
+        print(f"{account['currency']}: {account['balance']}")
+except Exception as e:
+    print("❌ Failed to fetch balances:", e)
+
+# --- Optional: live trading loop ---
+# while True:
+#     # Here you can add your trading logic
+#     time.sleep(60)
