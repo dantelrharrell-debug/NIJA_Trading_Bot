@@ -9,20 +9,17 @@ pem_temp_path = None
 
 if API_PEM_B64:
     try:
-        # Remove whitespace/newlines just in case
         API_PEM_B64_clean = ''.join(API_PEM_B64.strip().split())
-
-        # Auto-pad the string if missing '=' at the end
         missing_padding = len(API_PEM_B64_clean) % 4
         if missing_padding != 0:
             API_PEM_B64_clean += '=' * (4 - missing_padding)
 
-        # Decode the base64
-        API_PEM = base64.b64decode(API_PEM_B64_clean).decode("utf-8")
+        # Decode base64 to bytes (do NOT decode to UTF-8)
+        API_PEM_BYTES = base64.b64decode(API_PEM_B64_clean)
 
-        # Write to a temporary PEM file
-        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="w")
-        tf.write(API_PEM)
+        # Write bytes to temp PEM file
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
+        tf.write(API_PEM_BYTES)
         tf.flush()
         tf.close()
         pem_temp_path = tf.name
