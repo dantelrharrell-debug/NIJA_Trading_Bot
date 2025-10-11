@@ -1,3 +1,6 @@
+import sys
+print("sys.executable:", sys.executable)
+print("python version:", sys.version)
 import os
 import base64
 import tempfile
