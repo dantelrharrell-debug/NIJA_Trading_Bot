@@ -11,15 +11,15 @@ if API_PEM_B64:
     try:
         # Remove spaces/newlines
         API_PEM_B64_clean = ''.join(API_PEM_B64.strip().split())
-        # Auto-pad if missing '='
+        # Pad if length not multiple of 4
         missing_padding = len(API_PEM_B64_clean) % 4
         if missing_padding != 0:
             API_PEM_B64_clean += '=' * (4 - missing_padding)
 
-        # Decode base64 to bytes (do NOT decode to UTF-8)
+        # Decode to bytes ONLY
         API_PEM_BYTES = base64.b64decode(API_PEM_B64_clean)
 
-        # Write bytes to temporary PEM file
+        # Write bytes to temp PEM file
         tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
         tf.write(API_PEM_BYTES)
         tf.flush()
