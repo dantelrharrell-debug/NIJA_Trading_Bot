@@ -1,3 +1,8 @@
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    raise SystemExit("❌ coinbase_advanced_py not installed! Check requirements.txt")
+
 # nija_bot.py
 
 import os
