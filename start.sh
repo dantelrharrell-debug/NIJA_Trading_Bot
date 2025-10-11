@@ -1,11 +1,11 @@
 #!/bin/bash
-set -e
+set -e  # exit on any error
 
-# Activate virtual environment
+# 1️⃣ Activate virtual environment
 source .venv/bin/activate
 
-# Confirm that coinbase_advanced_py is installed
+# 2️⃣ Verify package installation
 python -c "import coinbase_advanced_py; print('✅ coinbase_advanced_py is available')"
 
-# Run your bot
+# 3️⃣ Run the bot
 python nija_bot.py
