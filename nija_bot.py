@@ -1,3 +1,58 @@
+import os, base64, tempfile
+from coinbase.rest import RESTClient
+
+# Prefer raw multiline PEM if available
+API_PEM = os.getenv("API_PEM")
+API_PEM_B64 = os.getenv("API_PEM_B64")
+pem_temp_path = None
+
+def _write_bytes_to_temp(b: bytes):
+    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
+    tf.write(b)
+    tf.flush()
+    tf.close()
+    return tf.name
+
+if API_PEM:
+    # API_PEM is full PEM text (with BEGIN/END), write as-is
+    pem_temp_path = _write_bytes_to_temp(API_PEM.encode('utf-8'))
+    print("✅ Wrote PEM (from API_PEM) to", pem_temp_path)
+elif API_PEM_B64:
+    # clean + pad, then base64-decode
+    clean = ''.join(API_PEM_B64.strip().split())
+    pad = len(clean) % 4
+    if pad:
+        clean += '=' * (4 - pad)
+    decoded = base64.b64decode(clean)
+
+    # If decoded is already ascii PEM text:
+    if decoded.startswith(b"-----BEGIN"):
+        pem_temp_path = _write_bytes_to_temp(decoded)
+        print("✅ Wrote PEM (decoded base64 -> PEM text) to", pem_temp_path)
+    else:
+        # decoded is DER binary — wrap in PEM
+        b64_der = base64.encodebytes(decoded)  # adds newlines
+        pem_bytes = b"-----BEGIN PRIVATE KEY-----\n" + b64_der + b"-----END PRIVATE KEY-----\n"
+        pem_temp_path = _write_bytes_to_temp(pem_bytes)
+        print("✅ Wrote PEM (wrapped DER -> PEM) to", pem_temp_path)
+else:
+    raise SystemExit("❌ Missing API_PEM or API_PEM_B64 env var")
+
+# Use pem_temp_path when constructing client: do NOT pass api_key/api_secret together with key_file
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if pem_temp_path:
+    # Option A: use key_file (recommended if you used PEM)
+    client = RESTClient(key_file=pem_temp_path)
+    print("✅ RESTClient created with key_file")
+else:
+    # Fallback: use API_KEY + API_SECRET
+    if not (API_KEY and API_SECRET):
+        raise SystemExit("❌ Need API_KEY+API_SECRET if no PEM")
+    client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
+    print("✅ RESTClient created with API_KEY/API_SECRET")
+
 import os, base64
 
 # ✅ Decode private key at runtime
