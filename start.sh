@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "🚀 start.sh starting..."
+echo "🚀 start.sh (system python + user-site) starting..."
 
-if [ ! -d ".venv" ]; then
-  echo "❗ .venv missing — did the build step run?"
-  exit 1
-fi
+# ensure user-site bin is on PATH
+export PATH="$HOME/.local/bin:$PATH"
 
-# verify package is available in the venv runtime
-./.venv/bin/python -c "import coinbase_advanced_py; print('✅ coinbase_advanced_py available in runtime')"
-
-# run the bot using the venv python
-exec ./.venv/bin/python nija_bot.py
+# run with system python (packages installed to ~/.local)
+exec python3 nija_bot.py
