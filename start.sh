@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Activate our venv and run the bot
+# Activate local venv
 if [ -d .venv ]; then
   . .venv/bin/activate
 else
-  echo "❗ .venv not found — run build first or check build logs"
+  echo "❌ .venv not found. Run build first."
   exit 1
 fi
 
-echo "🚀 Starting nija bot with .venv/python ..."
-# Replace nija_bot.py with your entrypoint filename if different
+echo "🚀 Starting nija bot..."
 exec python nija_bot.py
