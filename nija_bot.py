@@ -1,3 +1,6 @@
+# preferred
+from coinbase.rest import RESTClient
+
 # nija_bot.py
 import os, base64, tempfile, threading, time
 from http.server import HTTPServer, BaseHTTPRequestHandler
