@@ -1,3 +1,5 @@
+# Verify installation
+./.venv/bin/python -c "import coinbase_advanced_py; print('✅ coinbase_advanced_py installed correctly')"
 #!/bin/bash
 set -e  # Exit on any error
 
