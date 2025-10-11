@@ -2,7 +2,7 @@
 # Upgrade pip
 python3 -m pip install --upgrade pip
 
-# Install requirements in the virtual environment
+# Install dependencies
 python3 -m pip install --no-cache-dir -r requirements.txt
 
 # Run your bot
