@@ -1,6 +1,4 @@
 #!/bin/bash
-echo "🚀 Starting Nija bot..."
-
 # Activate virtual environment
 source .venv/bin/activate
 
