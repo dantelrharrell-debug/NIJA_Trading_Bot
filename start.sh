@@ -1,13 +1,8 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-# Activate local venv
-if [ -d .venv ]; then
-  . .venv/bin/activate
-else
-  echo "❌ .venv not found. Run build first."
-  exit 1
-fi
+# Activate virtual environment
+source .venv/bin/activate
 
-echo "🚀 Starting nija bot..."
-exec python nija_bot.py
+# Run the bot
+python nija_bot.py
