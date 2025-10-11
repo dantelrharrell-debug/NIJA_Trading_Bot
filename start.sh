@@ -1,14 +1,19 @@
 #!/bin/bash
-# Upgrade pip
+# exit immediately if a command exits with a non-zero status
+set -e
+
+echo "🚀 Starting build..."
+
+# Upgrade pip first
+echo "🔹 Upgrading pip..."
 python3 -m pip install --upgrade pip
 
-# Install dependencies
-python3 -m pip install --no-cache-dir -r requirements.txt
+# Force reinstall coinbase-advanced-py
+echo "🔹 Installing coinbase-advanced-py..."
+python3 -m pip install --force-reinstall coinbase-advanced-py==1.8.2
 
-# Run bot
-python3 nija_bot.py
+# Install all other dependencies
+echo "🔹 Installing other requirements..."
+python3 -m pip install -r requirements.txt
 
-#!/bin/bash
-pip install --upgrade pip
-pip install --force-reinstall coinbase-advanced-py==1.8.2
-pip install -r requirements.txt
+echo "✅ All dependencies installed successfully!"
