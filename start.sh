@@ -1,4 +1,11 @@
 #!/bin/bash
+
+# Upgrade pip and install dependencies first
+python3 -m pip install --upgrade pip
+python3 -m pip install --no-cache-dir -r requirements.txt
+
+# Now run your bot
+python3 nija_bot.py#!/bin/bash
 set -euo pipefail
 
 echo "🚀 Render start.sh: upgrade pip & install requirements"
