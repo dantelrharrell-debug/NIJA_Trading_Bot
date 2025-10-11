@@ -1,4 +1,28 @@
 # nija_bot.py
+
+import os
+import coinbase_advanced_py as cb
+
+# --- Initialize Coinbase client with API_KEY + API_SECRET ---
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ Missing API_KEY or API_SECRET environment variables")
+
+client = cb.Client(API_KEY, API_SECRET)
+
+# Example: fetch balances
+try:
+    balances = client.get_account_balances()
+    print("✅ Account balances:")
+    for account in balances:
+        print(f" - {account['currency']}: {account['balance']}")
+except Exception as e:
+    print(f"❌ Failed to fetch balances: {e}")
+
+# --- Your bot logic starts here ---
+# e.g., trading signals, executing orders, etc.# nija_bot.py
 import os
 import traceback
 from coinbase.rest import RESTClient
