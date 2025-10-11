@@ -1,14 +1,14 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "🔹 Upgrading pip..."
-python3 -m pip install --upgrade pip
+# Activate our venv and run the bot
+if [ -d .venv ]; then
+  . .venv/bin/activate
+else
+  echo "❗ .venv not found — run build first or check build logs"
+  exit 1
+fi
 
-echo "🔹 Installing coinbase-advanced-py..."
-python3 -m pip install --force-reinstall coinbase-advanced-py==1.8.2
-
-echo "🔹 Installing other requirements..."
-python3 -m pip install -r requirements.txt
-
-echo "✅ Build step finished. Starting bot..."
-python3 nija_bot.py
+echo "🚀 Starting nija bot with .venv/python ..."
+# Replace nija_bot.py with your entrypoint filename if different
+exec python nija_bot.py
