@@ -1,3 +1,13 @@
+import os, base64
+
+# ✅ Decode private key at runtime
+private_key_data = os.getenv("PRIVATE_KEY")
+if not private_key_data:
+    raise SystemExit("❌ PRIVATE_KEY not set")
+
+with open("coinbase_private_key.pem", "wb") as f:
+    f.write(base64.b64decode(private_key_data))
+
 import os, base64, tempfile
 import coinbase_advanced_py as cb   # library name to import
 
