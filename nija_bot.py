@@ -12,17 +12,14 @@ if not all([API_KEY, API_SECRET, API_PEM_B64]):
     raise SystemExit("❌ Missing API_KEY, API_SECRET, or API_PEM_B64")
 
 # 🔓 Decode PEM key and write temporary file
-pem_temp_path = None
-
 def bytes_is_pem(b: bytes) -> bool:
     return b.startswith(b"-----BEGIN")
 
 try:
-    # Clean whitespace/newlines
     clean = ''.join(API_PEM_B64.strip().split())
     pad = len(clean) % 4
     if pad:
-        clean += '=' * (4 - pad)
+        clean += "=" * (4 - pad)
 
     decoded = base64.b64decode(clean)
 
@@ -45,7 +42,14 @@ except Exception as e:
 
 # --- create Coinbase REST client
 try:
-    client = RESTClient(key_file=pem_temp_path)
-    print("✅ RESTClient created using key_file")
+    client = RESTClient(key_file=pem_temp_path, api_key=API_KEY, api_secret=API_SECRET)
+    print("✅ RESTClient created using key_file + API_KEY/API_SECRET")
 except Exception as e:
     raise SystemExit(f"❌ Failed to start Coinbase client: {type(e).__name__} {e}")
+
+# --- Example usage: get accounts
+try:
+    accounts = client.get_accounts()
+    print("💰 Accounts fetched successfully:", accounts)
+except Exception as e:
+    print("❌ Error fetching accounts:", type(e).__name__, e)
