@@ -4,6 +4,14 @@ try:
 except ImportError as e:
     raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
 
+# your existing bot code continues here...
+
+try:
+    from coinbase.rest import RESTClient
+    print("✅ coinbase.rest import OK")
+except ImportError as e:
+    raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
+
 # nija_bot.py
 import os
 import base64
