@@ -1,3 +1,11 @@
+import sys
+import os
+
+# Make sure Python uses the virtual environment
+venv_site = os.path.join(os.path.dirname(__file__), ".venv/lib/python3.13/site-packages")
+if venv_site not in sys.path:
+    sys.path.insert(0, venv_site)
+
 import os
 from coinbase_advanced_py import Client
 from cryptography.hazmat.primitives import serialization
