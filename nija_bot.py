@@ -1,94 +1,59 @@
-#!/usr/bin/env python3
-import os, time, threading, base64, tempfile, traceback
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import os
+import coinbase_advanced_py as cb
 
-# Try import coinbase library
-try:
-    from coinbase.rest import RESTClient
-except Exception as e:
-    raise SystemExit("Missing coinbase library. Ensure requirements.txt includes coinbase-advanced-py==1.8.2. Import error: " + repr(e))
-
-# === Config / Debug print ===
+# ------------------------
+# ENVIRONMENT VARIABLES
+# ------------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-API_PEM = os.getenv("API_PEM")
-API_PEM_B64 = os.getenv("API_PEM_B64")
-PORT = int(os.getenv("PORT", "10000"))
-LIVE_TRADING = os.getenv("LIVE_TRADING", "False").lower() in ("1","true","yes")
+LIVE_TRADING = os.getenv("LIVE_TRADING", "False").lower() == "true"
+PORT = int(os.getenv("PORT", 10000))
 
-print("=== STARTUP DEBUG ===")
-print("Have API_KEY:", bool(API_KEY))
-print("Have API_SECRET:", bool(API_SECRET))
-print("Have API_PEM:", bool(API_PEM))
-print("Have API_PEM_B64:", bool(API_PEM_B64))
-print("LIVE_TRADING:", LIVE_TRADING)
+# ------------------------
+# VALIDATION
+# ------------------------
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set. Add them to your environment variables.")
 
-# helper write temp PEM
-def _write_temp_pem(pem_bytes: bytes) -> str:
-    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
-    tf.write(pem_bytes)
-    tf.flush(); tf.close()
-    return tf.name
-
-client = None
+# ------------------------
+# INITIALIZE CLIENT
+# ------------------------
 try:
-    # Prefer API_KEY/API_SECRET because it's fast to test
-    if API_KEY and API_SECRET:
-        print("Using API_KEY + API_SECRET for authentication (recommended for testing).")
-        client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
-    else:
-        # Use PEM (multiline)
-        if API_PEM:
-            print("Using API_PEM (multiline).")
-            pem_path = _write_temp_pem(API_PEM.encode("utf-8"))
-            print("Wrote PEM to", pem_path)
-            client = RESTClient(key_file=pem_path)
-        elif API_PEM_B64:
-            print("Using API_PEM_B64 (base64). Decoding and writing PEM.")
-            clean = ''.join(API_PEM_B64.strip().split())
-            pad = len(clean) % 4
-            if pad:
-                clean += '=' * (4 - pad)
-            decoded = base64.b64decode(clean)
-            # if decoded looks like DER (no BEGIN header) wrap it
-            if not decoded.startswith(b"-----BEGIN"):
-                b64_der = base64.encodebytes(decoded)
-                decoded = b"-----BEGIN PRIVATE KEY-----\n" + b64_der + b"-----END PRIVATE KEY-----\n"
-            pem_path = _write_temp_pem(decoded)
-            print("Wrote decoded PEM to", pem_path)
-            client = RESTClient(key_file=pem_path)
-        else:
-            raise SystemExit("Missing credentials: set API_KEY/API_SECRET or API_PEM/API_PEM_B64 in Render env")
-    print("✅ RESTClient created")
+    client = cb.Client(API_KEY, API_SECRET)
+    print("✅ Coinbase client initialized using API_KEY + API_SECRET")
 except Exception as e:
-    print("❌ Failed to create RESTClient:", type(e).__name__, e)
-    traceback.print_exc()
-    raise SystemExit("Cannot continue until RESTClient is created. Fix env and redeploy.")
+    raise SystemExit(f"❌ Failed to initialize Coinbase client: {e}")
 
-# Bot loop (safe — does not execute trades automatically)
-def bot_loop():
-    print("🚀 Bot loop started (safe mode).")
-    while True:
-        try:
-            try:
-                accounts = client.get_accounts()
-            except Exception as e:
-                print("⚠️ get_accounts() error:", type(e).__name__, e)
-                accounts = None
-            print("Accounts snapshot (truncated):", str(accounts)[:600])
-        except Exception as e:
-            print("⚠️ Outer bot error:", type(e).__name__, e)
-        time.sleep(10)
+# ------------------------
+# CHECK ACCOUNTS
+# ------------------------
+try:
+    accounts = client.get_account_balances()
+    print("💰 Accounts snapshot:", accounts)
+except Exception as e:
+    print(f"⚠️ get_accounts() error: {e}")
 
-threading.Thread(target=bot_loop, daemon=True).start()
+# ------------------------
+# LIVE TRADING INFO
+# ------------------------
+print(f"LIVE_TRADING: {LIVE_TRADING}")
+print(f"Service running on PORT: {PORT}")
 
-# Minimal HTTP server so Render knows it's alive
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Nija bot is running (safe mode)")
+# ------------------------
+# PLACE YOUR BOT LOGIC BELOW
+# ------------------------
+# Example: simple fetch prices (replace with your trading logic)
+try:
+    btc_price = client.get_price("BTC-USD")
+    print("📈 Current BTC price:", btc_price)
+except Exception as e:
+    print(f"⚠️ get_price() error: {e}")
 
-httpd = HTTPServer(("", PORT), Handler)
-print("✅ HTTP server on port", PORT)
-httpd.serve_forever()
+# Keep the bot running or integrate your strategy here
+# For example, with Flask:
+# from flask import Flask
+# app = Flask(__name__)
+# @app.route("/")
+# def home():
+#     return "Nija Trading Bot is live!"
+# app.run(host="0.0.0.0", port=PORT)
