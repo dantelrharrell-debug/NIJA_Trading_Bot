@@ -4,6 +4,51 @@ try:
 except ImportError as e:
     raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
 
+import os
+import base64
+import tempfile
+import threading
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ==== Config ====
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+API_PEM = os.getenv("API_PEM")         # multiline PEM
+API_PEM_B64 = os.getenv("API_PEM_B64") # single-line base64 PEM
+PORT = int(os.getenv("PORT", "8080"))
+
+# ==== Create REST client ====
+pem_path = None
+if API_PEM:
+    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
+    tf.write(API_PEM.encode("utf-8"))
+    tf.flush()
+    tf.close()
+    pem_path = tf.name
+elif API_PEM_B64:
+    decoded = base64.b64decode(API_PEM_B64)
+    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
+    tf.write(decoded)
+    tf.flush()
+    tf.close()
+    pem_path = tf.name
+
+if pem_path:
+    client = RESTClient(key_file=pem_path)
+else:
+    if not (API_KEY and API_SECRET):
+        raise SystemExit("❌ Missing API credentials")
+    client = RESTClient(api_key=API_KEY, api_secret=API_SECRET)
+
+print("✅ RESTClient created successfully")
+
+try:
+    from coinbase.rest import RESTClient
+    print("✅ coinbase.rest import OK")
+except ImportError as e:
+    raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
+
 # your existing bot code continues here...
 
 try:
