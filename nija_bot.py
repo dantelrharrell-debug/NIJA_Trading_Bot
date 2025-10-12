@@ -1,19 +1,17 @@
-#!/usr/bin/env python3
-
-# ==== Coinbase Import ====
-try:
-    from coinbase.rest import RESTClient
-    print("✅ Coinbase RESTClient ready")
-except ImportError as e:
-    raise SystemExit("❌ Coinbase RESTClient not installed or not visible:", e)
-
-# ==== Standard Imports ====
+# nija_bot.py
 import os
 import base64
 import tempfile
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ==== Coinbase Import ====
+try:
+    from coinbase.rest import RESTClient
+    print("✅ coinbase.rest import OK")
+except ImportError as e:
+    raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
 
 # ==== Config ====
 API_KEY = os.getenv("API_KEY")
@@ -22,7 +20,9 @@ API_PEM = os.getenv("API_PEM")         # multiline PEM
 API_PEM_B64 = os.getenv("API_PEM_B64") # single-line base64 PEM
 PORT = int(os.getenv("PORT", "8080"))
 
-# ==== Helper: write PEM to temp file ====
+pem_path = None
+
+# ==== Helper: Write PEM file ====
 def _write_bytes(b: bytes):
     tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
     tf.write(b)
@@ -30,9 +30,7 @@ def _write_bytes(b: bytes):
     tf.close()
     return tf.name
 
-pem_path = None
-
-# ==== Load PEM if provided ====
+# ==== Prepare PEM or fallback to key/secret ====
 if API_PEM:
     pem_path = _write_bytes(API_PEM.encode("utf-8"))
     print("✅ Wrote PEM from API_PEM ->", pem_path)
@@ -46,7 +44,7 @@ elif API_PEM_B64:
         pem_path = _write_bytes(decoded)
         print("✅ Wrote decoded PEM ->", pem_path)
     else:
-        # assume DER; wrap into PEM
+        # Wrap DER into PEM
         b64_der = base64.encodebytes(decoded)
         pem_bytes = b"-----BEGIN PRIVATE KEY-----\n" + b64_der + b"-----END PRIVATE KEY-----\n"
         pem_path = _write_bytes(pem_bytes)
@@ -54,11 +52,11 @@ elif API_PEM_B64:
 else:
     print("ℹ️ No PEM provided; will use API_KEY/API_SECRET")
 
-# ==== Create RESTClient ====
+# ==== Create REST client ====
 try:
     if pem_path:
         client = RESTClient(key_file=pem_path)
-        print("✅ RESTClient created with PEM")
+        print("✅ RESTClient created with key_file")
     else:
         if not (API_KEY and API_SECRET):
             raise SystemExit("❌ Missing credentials: set API_PEM/API_PEM_B64 or API_KEY+API_SECRET")
@@ -67,20 +65,21 @@ try:
 except Exception as e:
     raise SystemExit(f"❌ Failed to create RESTClient: {type(e).__name__} {e}")
 
-# ==== Bot Loop ====
+# ==== Bot logic ====
 def start_bot():
     print("🚀 Nija bot started")
     while True:
         try:
             accounts = client.get_accounts()
-            print("Accounts:", accounts[:1] if isinstance(accounts, (list,tuple)) else accounts)
+            print("Accounts:", accounts[:1] if isinstance(accounts, (list, tuple)) else accounts)
         except Exception as e:
-            print("⚠️ Bot error:", type(e).__name__, e)
+            print("⚠️ bot loop error:", type(e).__name__, e)
         time.sleep(10)
 
+# Start bot in background thread
 threading.Thread(target=start_bot, daemon=True).start()
 
-# ==== Minimal Web Server for Render ====
+# ==== Minimal web server for Render ====
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -88,5 +87,5 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b"Nija bot is running")
 
 httpd = HTTPServer(("", PORT), Handler)
-print(f"✅ Listening on port {PORT}")
+print(f"✅ listening on port {PORT}")
 httpd.serve_forever()
