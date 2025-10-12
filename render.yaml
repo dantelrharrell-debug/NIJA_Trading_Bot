@@ -1,31 +1,16 @@
 services:
-  - type: background
-    name: nija-trading-bot
+  - type: web
+    name: nija-bot
     env: python
-    region: oregon
-    plan: starter
-    pythonVersion: "3.13"
-    buildCommand: |
-      # Create a virtual environment
-      python3 -m venv .venv
-      
-      # Activate the virtual environment
-      . .venv/bin/activate
-      
-      # Upgrade pip inside the venv
-      pip install --upgrade pip
-      
-      # Install project dependencies
-      pip install -r requirements.txt
-      pip install coinbase-advanced-py==1.8.2
-    startCommand: |
-      # Activate the virtual environment
-      . .venv/bin/activate
-      
-      # Start the FastAPI app with uvicorn
-      uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}
+    buildCommand: "./build.sh"
+    startCommand: ".venv/bin/python3 nija_bot.py"
+    plan: free
     envVars:
       - key: API_KEY
-        fromSecret: COINBASE_API_KEY
+        value: "<YOUR_API_KEY>"
       - key: API_SECRET
-        fromSecret: COINBASE_API_SECRET
+        value: "<YOUR_API_SECRET>"
+      - key: LIVE_TRADING
+        value: "False"
+      - key: PORT
+        value: "10000"
