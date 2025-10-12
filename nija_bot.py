@@ -1,3 +1,14 @@
+# Put this at the very top of nija_bot.py
+import os
+# prefer API_KEY/API_SECRET for now (safer for debugging)
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+if API_KEY and API_SECRET:
+    print("Using API_KEY + API_SECRET for authentication (recommended for debugging).")
+    # Create client using RESTClient later in code with these values.
+else:
+    print("API_KEY/API_SECRET not found — will try PEM (if provided).")
+
 #!/usr/bin/env python3
 # nija_bot.py — debug-friendly Coinbase Advanced client starter
 # Note for kids: this file tries to safely connect to Coinbase and will NOT place live trades
