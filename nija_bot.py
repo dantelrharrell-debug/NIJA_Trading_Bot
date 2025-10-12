@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import os
 import time
 import threading
@@ -35,7 +34,7 @@ def bot_loop():
 
 threading.Thread(target=bot_loop, daemon=True).start()
 
-# ==== Simple HTTP Server for Uptime ====
+# ==== HTTP Server for Uptime ====
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
