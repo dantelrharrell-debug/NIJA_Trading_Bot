@@ -5,18 +5,18 @@ import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ==== Coinbase Import (runtime) ====
+# ==== Coinbase Import ====
 try:
     from coinbase.rest import RESTClient
     print("✅ coinbase.rest import OK")
-except Exception as e:
-    raise SystemExit("❌ coinbase.rest not installed or failed to import:", e)
+except ImportError as e:
+    raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
 
 # ==== Config ====
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-API_PEM = os.getenv("API_PEM")         # optional multiline PEM
-API_PEM_B64 = os.getenv("API_PEM_B64") # optional base64 PEM
+API_PEM = os.getenv("API_PEM")          # optional multiline PEM
+API_PEM_B64 = os.getenv("API_PEM_B64")  # optional base64 PEM
 PORT = int(os.getenv("PORT", "8080"))
 
 if not API_KEY or not API_SECRET:
@@ -33,7 +33,7 @@ def bot_loop():
             print("Accounts:", accounts[:1] if isinstance(accounts, list) else accounts)
         except Exception as e:
             print("⚠️ Bot error:", type(e).__name__, e)
-        time.sleep(10)  # adjust polling frequency
+        time.sleep(10)  # adjust polling frequency as needed
 
 threading.Thread(target=bot_loop, daemon=True).start()
 
@@ -42,7 +42,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Nija bot is running 🚀")
+        # Encode UTF-8 to allow emojis
+        self.wfile.write("Nija bot is running 🚀".encode("utf-8"))
 
 httpd = HTTPServer(("", PORT), Handler)
 print(f"✅ Listening on port {PORT}")
