@@ -48,3 +48,10 @@ class Handler(BaseHTTPRequestHandler):
 httpd = HTTPServer(("", PORT), Handler)
 print(f"✅ Listening on port {PORT}")
 httpd.serve_forever()
+def check_coinbase():
+    try:
+        accounts = client.get_accounts()
+        print("✅ Coinbase connection OK. First account:", accounts[0] if accounts else "No accounts found")
+    except Exception as e:
+        print("❌ Coinbase connection failed:", type(e).__name__, e)
+
