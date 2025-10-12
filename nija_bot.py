@@ -1,6 +1,14 @@
 import sys
 import os
 
+# Add Render's virtual environment site-packages to sys.path
+venv_path = os.path.join(os.path.dirname(__file__), ".venv/lib/python3.13/site-packages")
+if venv_path not in sys.path:
+    sys.path.insert(0, venv_path)
+
+import sys
+import os
+
 # Make sure Python uses the virtual environment
 venv_site = os.path.join(os.path.dirname(__file__), ".venv/lib/python3.13/site-packages")
 if venv_site not in sys.path:
