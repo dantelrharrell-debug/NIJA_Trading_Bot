@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+##!/usr/bin/env python3
+
 import os
 import time
 import threading
@@ -14,6 +15,8 @@ except ImportError as e:
 # ==== Config ====
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
+API_PEM = os.getenv("API_PEM")         # optional multiline PEM
+API_PEM_B64 = os.getenv("API_PEM_B64") # optional base64 PEM
 PORT = int(os.getenv("PORT", "8080"))
 
 if not API_KEY or not API_SECRET:
@@ -30,11 +33,11 @@ def bot_loop():
             print("Accounts:", accounts[:1] if isinstance(accounts, list) else accounts)
         except Exception as e:
             print("⚠️ Bot error:", type(e).__name__, e)
-        time.sleep(10)
+        time.sleep(10)  # adjust polling frequency as needed
 
 threading.Thread(target=bot_loop, daemon=True).start()
 
-# ==== HTTP Server for Uptime ====
+# ==== Simple HTTP Server for Uptime ====
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
