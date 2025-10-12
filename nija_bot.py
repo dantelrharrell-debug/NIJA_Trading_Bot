@@ -1,16 +1,16 @@
-##!/usr/bin/env python3
+#!/usr/bin/env python3
 
 import os
 import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ==== Coinbase Import ====
+# ==== Coinbase Import (runtime) ====
 try:
     from coinbase.rest import RESTClient
     print("✅ coinbase.rest import OK")
-except ImportError as e:
-    raise SystemExit("❌ coinbase.rest not installed or not visible:", e)
+except Exception as e:
+    raise SystemExit("❌ coinbase.rest not installed or failed to import:", e)
 
 # ==== Config ====
 API_KEY = os.getenv("API_KEY")
@@ -33,7 +33,7 @@ def bot_loop():
             print("Accounts:", accounts[:1] if isinstance(accounts, list) else accounts)
         except Exception as e:
             print("⚠️ Bot error:", type(e).__name__, e)
-        time.sleep(10)  # adjust polling frequency as needed
+        time.sleep(10)  # adjust polling frequency
 
 threading.Thread(target=bot_loop, daemon=True).start()
 
