@@ -1,19 +1,12 @@
-# Coinbase API
 coinbase-advanced-py==1.8.2
-
-# HTTP & requests
 requests>=2.32.0,<3.0
 urllib3>=1.21.1,<3.0
 charset_normalizer>=2.0,<4.0
 idna>=2.5,<4.0
 certifi>=2017.4.17
-
-# Crypto & JWT
 cryptography>=46.0.2
 PyJWT>=2.10.1,<3.0
 cffi>=2.0.0
 pycparser>=2.23
-
-# Websocket & backoff
 websockets>=13.1,<14.0
 backoff>=2.2.1,<3.0
