@@ -1,3 +1,9 @@
+try:
+    from coinbase.rest import RESTClient
+    print("✅ Coinbase RESTClient ready")
+except ImportError as e:
+    raise SystemExit("❌ Coinbase RESTClient not installed:", e)
+
 #!/usr/bin/env python3
 # nija_bot.py
 
