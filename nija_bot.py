@@ -1,3 +1,7 @@
+import sys
+print(sys.executable)
+print(sys.path)
+
 rm -rf .venv
 python3 -m venv .venv
 source .venv/bin/activate
