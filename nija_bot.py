@@ -1,3 +1,32 @@
+import os
+from coinbase_advanced_py import Client
+from cryptography.hazmat.primitives import serialization
+
+# -----------------------------
+# STEP 1: Load your private key
+# -----------------------------
+pem_path = os.path.join(os.path.dirname(__file__), "coinbase_key.pem")
+with open(pem_path, "rb") as f:
+    private_key = serialization.load_pem_private_key(
+        f.read(),
+        password=None,
+    )
+
+# -----------------------------
+# STEP 2: Set your API key
+# -----------------------------
+API_KEY = os.getenv("API_KEY")  # Go to Render dashboard → Secrets → Add your API_KEY
+API_SECRET = private_key         # This is loaded from the PEM automatically
+
+# -----------------------------
+# STEP 3: Connect Nija
+# -----------------------------
+client = Client(API_KEY, API_SECRET)
+
+# Quick balance check to make sure it works
+balances = client.get_account_balances()
+print("✅ Nija connected! Balances:", balances)
+
 #!/usr/bin/env python3
 
 import os
