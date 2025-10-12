@@ -1,6 +1,6 @@
 services:
-  - type: web
-    name: nija-bot
+  - type: worker
+    name: nija-bot-worker
     env: python
     buildCommand: "./build.sh"
     startCommand: ".venv/bin/python3 nija_bot.py"
@@ -12,5 +12,3 @@ services:
         value: "<YOUR_API_SECRET>"
       - key: LIVE_TRADING
         value: "False"
-      - key: PORT
-        value: "10000"
