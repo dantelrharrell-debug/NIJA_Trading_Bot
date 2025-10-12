@@ -1,7 +1,6 @@
-# requirements.txt
 coinbase-advanced-py==1.8.2
 requests>=2.32.0
-websockets>=13.1,<14
 cryptography>=46.0.2
+websockets>=13.1,<14
 PyJWT>=2.10.1
 backoff>=2.2.1
