@@ -3,6 +3,9 @@ import site
 import os
 import time
 
+# ------------------------
+# GREEN CHECKS: Python environment
+# ------------------------
 print("🐍 Python executable:", sys.executable)
 print("📂 Python site-packages:", site.getsitepackages())
 print("✅ sys.path:", sys.path)
@@ -19,7 +22,7 @@ if not API_KEY or not API_SECRET:
     raise SystemExit("❌ API_KEY or API_SECRET not set. Add them to your environment variables.")
 
 # ------------------------
-# HELPER FUNCTION TO INIT CLIENT
+# HELPER FUNCTION: Initialize Coinbase Client
 # ------------------------
 def init_coinbase_client():
     try:
@@ -43,7 +46,7 @@ while client is None:
         time.sleep(10)
 
 # ------------------------
-# CHECK ACCOUNTS
+# GREEN CHECK: Accounts
 # ------------------------
 try:
     accounts = client.get_account_balances()
@@ -67,6 +70,6 @@ try:
             print("📈 Current BTC price:", btc_price)
         except Exception as e:
             print(f"⚠️ Error fetching BTC price: {e}")
-        time.sleep(10)  # Fetch every 10 seconds (adjust to your strategy)
+        time.sleep(10)  # Adjust frequency for your strategy
 except KeyboardInterrupt:
     print("🛑 Bot stopped manually")
