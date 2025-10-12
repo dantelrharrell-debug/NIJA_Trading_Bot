@@ -1,3 +1,9 @@
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py import OK")
+except ImportError as e:
+    raise SystemExit("❌ coinbase_advanced_py not installed or not visible:", e)
+
 # nija_bot.py
 
 import os
