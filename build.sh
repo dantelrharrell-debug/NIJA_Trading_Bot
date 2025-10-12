@@ -1,16 +1,19 @@
 #!/bin/bash
-set -e
-echo "🛠️  build.sh starting..."
+set -e  # Exit immediately if a command fails
 
-if [ ! -d ".venv" ]; then
-  python3 -m venv .venv
-fi
+echo "🛠 Cleaning previous virtual environment..."
+rm -rf .venv
 
-# use explicit venv python for all installs
-./.venv/bin/python -m pip install --upgrade pip
-./.venv/bin/python -m pip install -r requirements.txt
+echo "🛠 Creating new virtual environment..."
+python3 -m venv .venv
 
-# quick verify import inside venv
-echo "🔎 verifying coinbase import inside venv..."
-./.venv/bin/python -c "import importlib, sys; print('python:', sys.executable); print('sys.path[0..3]=', sys.path[:4]); spec=importlib.util.find_spec('coinbase'); print('coinbase spec=', spec); import coinbase.rest as r; print('coinbase.rest ok ->', getattr(r,'__file__',None))"
-echo "✅ build.sh finished."
+echo "🛠 Activating virtual environment..."
+source .venv/bin/activate
+
+echo "🛠 Upgrading pip..."
+python3 -m pip install --upgrade pip
+
+echo "🛠 Installing required packages..."
+python3 -m pip install -r requirements.txt
+
+echo "✅ Build complete!"
