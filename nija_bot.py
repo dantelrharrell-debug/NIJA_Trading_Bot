@@ -1,20 +1,39 @@
-# preferred
-from coinbase.rest import RESTClient
-
-# nija_bot.py
-import os, base64, tempfile, threading, time
+#!/usr/bin/env python3
+import sys
+import importlib
+import os
+import base64
+import tempfile
+import threading
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from coinbase.rest import RESTClient
 
-# ==== Config ====
+# ==========================
+# Debug & Environment Check
+# ==========================
+print("Python executable:", sys.executable)
+print("Python sys.path[:8]:", sys.path[:8])
+print("Coinbase spec:", importlib.util.find_spec("coinbase"))
+
+try:
+    from coinbase.rest import RESTClient
+    print("✅ coinbase.rest import OK")
+except Exception as e:
+    print("❌ coinbase.rest import failed:", type(e).__name__, e)
+    raise
+
+# ==========================
+# Config / Credentials
+# ==========================
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-API_PEM = os.getenv("API_PEM")         # multiline PEM (preferred if UI supports it)
-API_PEM_B64 = os.getenv("API_PEM_B64") # single-line base64 PEM (alternative)
+API_PEM = os.getenv("API_PEM")          # multiline PEM
+API_PEM_B64 = os.getenv("API_PEM_B64")  # single-line base64 PEM
 PORT = int(os.getenv("PORT", "8080"))
 
-pem_path = None
-
+# ==========================
+# Helper: write bytes to temp PEM file
+# ==========================
 def _write_bytes(b: bytes):
     tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem", mode="wb")
     tf.write(b)
@@ -22,7 +41,11 @@ def _write_bytes(b: bytes):
     tf.close()
     return tf.name
 
-# Try multiline PEM first
+# ==========================
+# Prepare PEM / DER if provided
+# ==========================
+pem_path = None
+
 if API_PEM:
     pem_path = _write_bytes(API_PEM.encode("utf-8"))
     print("✅ Wrote PEM from API_PEM ->", pem_path)
@@ -36,19 +59,20 @@ elif API_PEM_B64:
         pem_path = _write_bytes(decoded)
         print("✅ Wrote decoded PEM ->", pem_path)
     else:
-        # assume DER; wrap into PEM
-        b64_der = base64.encodebytes(decoded)  # newline safe
+        # assume DER, wrap into PEM
+        b64_der = base64.encodebytes(decoded)
         pem_bytes = b"-----BEGIN PRIVATE KEY-----\n" + b64_der + b"-----END PRIVATE KEY-----\n"
         pem_path = _write_bytes(pem_bytes)
         print("✅ Wrote wrapped DER->PEM ->", pem_path)
 else:
-    print("ℹ️ No PEM provided via API_PEM/API_PEM_B64; will try API_KEY/API_SECRET")
+    print("ℹ️ No PEM provided; will try API_KEY/API_SECRET")
 
-# Create REST client: prefer key_file if present; otherwise fallback to API key/secret
+# ==========================
+# Initialize RESTClient
+# ==========================
 client = None
 try:
     if pem_path:
-        # Use PEM file (do NOT pass api_key/api_secret at same time)
         client = RESTClient(key_file=pem_path)
         print("✅ RESTClient created with key_file")
     else:
@@ -59,27 +83,30 @@ try:
 except Exception as e:
     raise SystemExit(f"❌ Failed to create RESTClient: {type(e).__name__} {e}")
 
-# A simple bot loop (replace with your logic)
+# ==========================
+# Bot Logic (background thread)
+# ==========================
 def start_bot():
     print("🚀 Nija bot started")
     while True:
         try:
-            accounts = client.get_accounts()
-            print("Accounts:", accounts[:1] if isinstance(accounts, (list,tuple)) else accounts)
+            accounts = list(client.get_accounts())  # convert generator to list
+            print("Accounts:", accounts[:1] if accounts else "No accounts")
         except Exception as e:
-            print("⚠️ bot loop error:", type(e).__name__, e)
-        time.sleep(10)
+            print("⚠️ Bot loop error:", type(e).__name__, e)
+        time.sleep(10)  # adjust frequency
 
-# start bot in background thread
 threading.Thread(target=start_bot, daemon=True).start()
 
-# minimal web server so Render detects a listen port (if running as web service)
+# ==========================
+# Minimal HTTP server for Render
+# ==========================
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Nija bot is running")
+        self.wfile.write(b"Nija bot is running ✅")
 
 httpd = HTTPServer(("", PORT), Handler)
-print(f"✅ listening on port {PORT}")
+print(f"✅ Listening on port {PORT}")
 httpd.serve_forever()
