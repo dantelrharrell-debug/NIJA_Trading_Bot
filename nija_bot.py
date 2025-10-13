@@ -19,6 +19,7 @@ load_dotenv()
 
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
+LIVE_TRADING = os.getenv("LIVE_TRADING", "False") == "True"
 
 def find_coinbase_client_class():
     candidates = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
@@ -92,13 +93,12 @@ def balances():
 # Trading Bot Loop (RESTClient-compatible)
 # -----------------------
 def bot_loop():
-    live_trading = os.getenv("LIVE_TRADING", "False") == "True"
-
     if cb_client is None:
         print("❌ Coinbase client not available. Bot cannot start.")
         return
 
-    print(f"🟢 Bot thread started - LIVE_TRADING: {live_trading}")
+    mode = "LIVE TRADING" if LIVE_TRADING else "SIMULATION"
+    print(f"🟢 Bot thread started - Mode: {mode}")
 
     while True:
         try:
@@ -109,9 +109,12 @@ def bot_loop():
                 balance = acct.get("balance", {}).get("amount")
                 print(f" - {currency}: {balance}")
 
-            # TODO: Add trading logic here
-            if live_trading:
-                print("⚡ Live trading logic would execute here...")
+            # Trading logic placeholder
+            if LIVE_TRADING:
+                print("⚡ Executing LIVE trading logic...")
+                # TODO: Place your live trades here
+            else:
+                print("⚡ SIMULATION mode: trades are NOT executed")
 
             time.sleep(10)
         except Exception as e:
