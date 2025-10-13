@@ -1,20 +1,28 @@
-#!/bin/sh
+#!/usr/bin/env bash
 set -euo pipefail
 
-# create venv (idempotent)
+echo "🚀 Starting build..."
+
+# 1. Create or reuse virtualenv
 python3 -m venv .venv
 
-# ensure pip exists in the venv
+# 2. Ensure pip present in venv and upgrade tools
 .venv/bin/python -m ensurepip --upgrade
-
-# upgrade packaging tools inside the venv
 .venv/bin/pip install --upgrade pip setuptools wheel
 
-# install requirements into the venv
+# 3. Install requirements into the venv
 .venv/bin/pip install -r requirements.txt
 
-# debug: show which python and which pip we're using (optional but helpful)
-.venv/bin/python -c "import sys; print('VENV PYTHON:', sys.executable); import pkgutil; print('coinbase module spec:', pkgutil.find_loader('coinbase_advanced_py'))"
+echo "✅ Requirements installed"
 
-# final: run the app with the venv python
+# 4. Debug: verify venv python & coinbase availability
+.venv/bin/python - <<'PY'
+import sys, pkgutil
+print("VENV PYTHON:", sys.executable)
+print("sys.path (first 6):", sys.path[:6])
+print("coinbase_advanced_py loader:", pkgutil.find_loader("coinbase_advanced_py"))
+PY
+
+# 5. Run the app with the venv python
 .venv/bin/python main.py
+echo "🚀 Bot started"
