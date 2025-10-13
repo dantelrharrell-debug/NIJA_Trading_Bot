@@ -1,3 +1,8 @@
+import sys
+print(sys.path)
+import coinbase_advanced_py
+print("coinbase_advanced_py imported successfully!")
+
 # nija_bot.py
 # Nija Trading Bot - Web Service Version
 
