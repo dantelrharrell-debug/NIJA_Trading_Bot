@@ -1,16 +1,11 @@
 #!/bin/bash
-
-# Create virtual environment if it doesn't exist
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
-fi
-
 # Activate virtual environment
-source .venv/bin/activate
+. .venv/bin/activate
 
-# Upgrade pip and install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
+# Optional: show Python version and pip packages (debug info)
+echo "Python version: $(python3 --version)"
+echo "Installed packages:"
+pip list
 
-# Start the bot
+# Start your bot
 python3 nija_bot.py
