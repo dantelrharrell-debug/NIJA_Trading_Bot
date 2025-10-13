@@ -1,8 +1,21 @@
-import subprocess
+import sys
+import pkgutil
+import importlib
+import traceback
 
-def check_coinbase_modules():
-    result = subprocess.run(['find', '.', '-name', 'coinbase*'], capture_output=True, text=True)
-    print("Coinbase files found:\n", result.stdout)
+print("PYTHON:", sys.executable)
+print("---SYS.PATH---")
+for p in sys.path:
+    print(" ", p)
 
-if __name__ == "__main__":
-    check_coinbase_modules()
+mods = [m.name for m in pkgutil.iter_modules() if 'coin' in m.name.lower()]
+print("---MODULES WITH coin---", mods)
+
+importlib.invalidate_caches()
+
+try:
+    import coinbase_advanced_py as cb
+    print("IMPORT OK:", getattr(cb, '__file__', None))
+except Exception:
+    traceback.print_exc()
+    print("IMPORT FAILED")
