@@ -1,3 +1,19 @@
+from flask import Flask
+import os
+import threading
+import coinbase_advanced_py as cb
+
+app = Flask(__name__)
+
+# Use port from Render
+PORT = int(os.environ.get("PORT", 10000))
+
+@app.route("/")
+def heartbeat():
+    return "Nija Trading Bot is alive! 🟢"
+
+def start_flask():
+    app.run(host="0.0.0.0", port=PORT)
 import sys
 print(sys.executable)
 print(sys.path)
