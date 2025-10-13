@@ -1,3 +1,22 @@
+# main.py (near the top, after loading .env / API keys)
+import importlib.util
+import pkgutil
+import sys
+
+# quick, non-fatal import check
+try:
+    # correct import for the official SDK:
+    from coinbase.rest import RESTClient
+    print("✅ coinbase (coinbase-advanced-py package) import successful: from coinbase.rest import RESTClient")
+except ModuleNotFoundError:
+    print("❌ coinbase NOT found (the package 'coinbase-advanced-py' may be installed under a different name or not installed into this Python interpreter)")
+
+# Extra diagnostics (helpful in deploy logs)
+print("Python executable:", sys.executable)
+print("sys.path (first entries):", sys.path[:6])
+print("pkgutil.find_loader('coinbase'):", pkgutil.find_loader("coinbase"))
+print("importlib.util.find_spec('coinbase'):", importlib.util.find_spec("coinbase"))
+
 import sys
 print(sys.executable)
 
