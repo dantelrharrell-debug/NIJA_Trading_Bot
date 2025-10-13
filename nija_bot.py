@@ -2,6 +2,7 @@ import sys
 import site
 import os
 import time
+import traceback
 
 # ------------------------
 # GREEN CHECKS: Python environment
@@ -21,48 +22,26 @@ if not API_KEY or not API_SECRET:
     raise SystemExit("❌ API_KEY or API_SECRET not set. Add them to your environment variables.")
 
 # ------------------------
-# HELPER FUNCTION: Initialize Coinbase Client
+# FUNCTION TO INIT COINBASE CLIENT
 # ------------------------
 def init_coinbase_client():
-    try:
-        import coinbase_advanced_py as cb
-        client = cb.Client(API_KEY, API_SECRET)
-        print("✅ Coinbase client initialized")
-        return client
-    except ModuleNotFoundError:
-        print("⚠️ coinbase_advanced_py module not found. Retrying in 10s...")
-    except Exception as e:
-        print(f"⚠️ Failed to initialize Coinbase client: {e}. Retrying in 10s...")
-    return None
-
-# ------------------------
-# AUTO-RETRY LOOP FOR CLIENT
-# ------------------------
-client = None
-while client is None:
-    client = init_coinbase_client()
-    if client is None:
+    while True:
+        try:
+            import coinbase_advanced_py as cb
+            client = cb.Client(API_KEY, API_SECRET)
+            print("✅ Coinbase client initialized")
+            return client
+        except ModuleNotFoundError:
+            print("⚠️ coinbase_advanced_py not found. Retrying in 10s...")
+        except Exception as e:
+            print(f"⚠️ Failed to initialize Coinbase client: {e}. Retrying in 10s...")
         time.sleep(10)
 
 # ------------------------
-# GREEN CHECK: Accounts
+# FUNCTION TO RUN BOT LOOP
 # ------------------------
-try:
-    accounts = client.get_account_balances()
-    print("💰 Accounts snapshot:", accounts)
-except Exception as e:
-    print(f"⚠️ get_account_balances() error: {e}")
-
-# ------------------------
-# LIVE TRADING INFO
-# ------------------------
-print(f"LIVE_TRADING: {LIVE_TRADING}")
-print("✅ Worker is ready and running")
-
-# ------------------------
-# BOT LOGIC LOOP
-# ------------------------
-try:
+def run_bot(client):
+    print("✅ Worker is ready and running")
     while True:
         try:
             btc_price = client.get_price("BTC-USD")
@@ -70,5 +49,24 @@ try:
         except Exception as e:
             print(f"⚠️ Error fetching BTC price: {e}")
         time.sleep(10)  # adjust frequency for your strategy
-except KeyboardInterrupt:
-    print("🛑 Bot stopped manually")
+
+# ------------------------
+# SELF-HEALING MAIN LOOP
+# ------------------------
+while True:
+    try:
+        client = init_coinbase_client()
+
+        # GREEN CHECK: accounts snapshot
+        try:
+            accounts = client.get_account_balances()
+            print("💰 Accounts snapshot:", accounts)
+        except Exception as e:
+            print(f"⚠️ get_account_balances() error: {e}")
+
+        run_bot(client)
+
+    except Exception:
+        print("❌ Bot crashed unexpectedly. Restarting in 5s...")
+        traceback.print_exc()
+        time.sleep(5)
