@@ -1,4 +1,30 @@
-# safe_coinbase_bootstrap.py  -- paste at top of your bot (or replace your current import block)
+import coinbase_advanced_py
+import inspect
+
+print("🔍 Scanning coinbase_advanced_py for Client classes...")
+
+# Check all submodules for classes named 'Client'
+found_clients = []
+for name, obj in inspect.getmembers(coinbase_advanced_py):
+    if inspect.isclass(obj) and name.lower() == "client":
+        found_clients.append((name, obj, "coinbase_advanced_py"))
+
+# Also inspect submodules
+for sub_name in dir(coinbase_advanced_py):
+    try:
+        submod = getattr(coinbase_advanced_py, sub_name)
+        for name, obj in inspect.getmembers(submod):
+            if inspect.isclass(obj) and name.lower() == "client":
+                found_clients.append((name, obj, f"coinbase_advanced_py.{sub_name}"))
+    except Exception:
+        pass
+
+if found_clients:
+    print("✅ Found Client class(es):")
+    for name, cls, path in found_clients:
+        print(f" - {name} at {path}")
+else:
+    print("❌ No Client class found. We'll need to adjust your import or package version.")# safe_coinbase_bootstrap.py  -- paste at top of your bot (or replace your current import block)
 import importlib, pkgutil, inspect, os, sys, traceback
 
 def find_client_class():
