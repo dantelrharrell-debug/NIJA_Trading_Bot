@@ -1,14 +1,19 @@
 services:
   - type: worker
-    name: nija-bot-worker
+    name: nija-bot
     env: python
-    buildCommand: "./build.sh"
-    startCommand: ".venv/bin/python3 nija_bot.py"
-    plan: free
+    plan: starter  # or whatever plan you use
+    branch: main   # your Git branch
+    buildCommand: |
+      python3 -m venv .venv
+      source .venv/bin/activate
+      python3 -m pip install --upgrade pip
+      python3 -m pip install -r requirements.txt
+    startCommand: .venv/bin/python3 nija_bot.py
     envVars:
       - key: API_KEY
-        value: "<YOUR_API_KEY>"
+        fromSecret: API_KEY
       - key: API_SECRET
-        value: "<YOUR_API_SECRET>"
+        fromSecret: API_SECRET
       - key: LIVE_TRADING
         value: "False"
