@@ -1,6 +1,6 @@
 services:
-  - type: worker
-    name: nija-bot
+  - type: web
+    name: nija-bot-web
     env: python
     plan: starter
     branch: main
@@ -9,7 +9,7 @@ services:
       source .venv/bin/activate
       python3 -m pip install --upgrade pip
       python3 -m pip install -r requirements.txt
-    startCommand: .venv/bin/python3 nija_bot.py
+    startCommand: .venv/bin/gunicorn --workers 1 --bind 0.0.0.0:$PORT nija_bot:app
     envVars:
       - key: API_KEY
         fromSecret: API_KEY
@@ -17,3 +17,7 @@ services:
         fromSecret: API_SECRET
       - key: LIVE_TRADING
         value: "False"
+      - key: ADMIN_TOKEN
+        fromSecret: ADMIN_TOKEN
+      - key: AUTO_START
+        value: "True"
