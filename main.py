@@ -1,3 +1,27 @@
+# main.py (near the top, after .env/API keys loaded)
+import sys
+import pkgutil
+import importlib.util
+
+# Preferred: import the library correctly
+try:
+    # Example: import the REST client class used by the SDK
+    from coinbase.rest import RESTClient
+    print("✅ coinbase (coinbase-advanced-py) import successful: from coinbase.rest import RESTClient")
+except ModuleNotFoundError:
+    print("❌ coinbase NOT found (package may not be installed into this Python interpreter)")
+    print("Python executable:", sys.executable)
+    print("sys.path (sample):", sys.path[:6])
+    # Exit if you want the deploy to fail early when missing
+    # import sys; sys.exit(1)
+
+# (Optional) lightweight check if you want to keep the original style:
+try:
+    import coinbase
+    print("✅ coinbase import OK")
+except ModuleNotFoundError:
+    print("❌ coinbase import failed")
+
 # main.py (near the top, after loading .env / API keys)
 import importlib.util
 import pkgutil
