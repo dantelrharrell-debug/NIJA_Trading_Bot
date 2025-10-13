@@ -14,7 +14,7 @@ if not API_KEY or not API_SECRET:
 
 try:
     client = Client(API_KEY, API_SECRET)
-    accounts = client.get_accounts()  # just fetch account info
+    accounts = client.get_accounts()  # fetch account info
     print("✅ Coinbase Advanced module imported successfully!")
     print("Accounts info (first 2 only for safety):")
     for acc in accounts[:2]:
