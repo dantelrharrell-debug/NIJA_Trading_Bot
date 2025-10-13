@@ -1,32 +1,20 @@
-#!/bin/bash
-# ----------------------------
-# Render Build Script for NIJA Trading Bot
-# ----------------------------
+#!/bin/sh
+set -euo pipefail
 
-set -e  # Exit immediately if a command fails
-
-echo "🚀 Starting build..."
-
-# 1. Create virtual environment
+# create venv (idempotent)
 python3 -m venv .venv
-echo "✅ Virtual environment created"
 
-# 2. Activate virtual environment
-source .venv/bin/activate
-echo "✅ Virtual environment activated"
+# ensure pip exists in the venv
+.venv/bin/python -m ensurepip --upgrade
 
-# 3. Ensure pip is installed and upgraded
-python -m ensurepip --upgrade
-pip install --upgrade pip
-echo "✅ pip upgraded"
+# upgrade packaging tools inside the venv
+.venv/bin/pip install --upgrade pip setuptools wheel
 
-# 4. Install requirements
-pip install -r requirements.txt
-echo "✅ Requirements installed"
+# install requirements into the venv
+.venv/bin/pip install -r requirements.txt
 
-# 5. Optional: check that coinbase_advanced_py is installed
-python -c "import coinbase_advanced_py; print('✅ coinbase_advanced_py imported successfully!')"
+# debug: show which python and which pip we're using (optional but helpful)
+.venv/bin/python -c "import sys; print('VENV PYTHON:', sys.executable); import pkgutil; print('coinbase module spec:', pkgutil.find_loader('coinbase_advanced_py'))"
 
-# 6. Run the bot
-python main.py
-echo "🚀 Bot started successfully"
+# final: run the app with the venv python
+.venv/bin/python main.py
