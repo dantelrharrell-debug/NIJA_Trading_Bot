@@ -1,14 +1,14 @@
 #!/bin/bash
-set -e  # Exit on error
+set -e
 
 # ------------------------
-# Check if venv exists and rebuild if missing or corrupted
+# Rebuild virtual environment if missing or corrupted
 # ------------------------
 if [ ! -d ".venv" ]; then
     echo "🛠 .venv missing. Creating virtual environment..."
 else
     echo "🛠 .venv exists. Checking for coinbase_advanced_py..."
-    . .venv/bin/activate
+    source .venv/bin/activate
     if ! python3 -c "import coinbase_advanced_py" &> /dev/null; then
         echo "⚠️ coinbase_advanced_py not found in .venv. Rebuilding..."
         rm -rf .venv
