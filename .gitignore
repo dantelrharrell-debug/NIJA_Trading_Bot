@@ -1,26 +1,5 @@
-# Python
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-*.env
-
-# Logs
-*.log
-
-# Virtual environments
 .venv/
-env/
-
-# Node.js dependencies
-node_modules/
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# IDEs
-.vscode/
-.idea/
-
-# .gitignore
-.netrc
+.env
