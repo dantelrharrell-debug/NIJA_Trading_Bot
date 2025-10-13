@@ -1,33 +1,44 @@
-import requests
+# nija_bot_test.py
+
 import os
+import sys
 
-# Replace with your Render app's live URL
-BASE_URL = os.getenv("NIJA_BOT_URL", "https://nija-trading-bot-v9xl.onrender.com")
+print("🔹 Python executable:", sys.executable)
+print("🔹 sys.path:", sys.path)
 
-def check_status():
-    try:
-        r = requests.get(f"{BASE_URL}/status", timeout=5)
-        if r.status_code == 200:
-            print("[STATUS] Coinbase client connected:", r.json())
-        else:
-            print("[STATUS] Error:", r.status_code, r.text)
-    except Exception as e:
-        print("[STATUS] Could not reach /status:", e)
+# ------------------ Package Imports ------------------
+try:
+    import coinbase_advanced_py as cb
+    import flask
+    import pandas as pd
+    print("✅ All packages imported successfully!")
+except ModuleNotFoundError as e:
+    print(f"❌ Package import failed: {e}")
+    sys.exit(1)
 
-def test_webhook():
-    payload = {
-        "symbol": "BTC-USD",
-        "action": "buy",
-        "size": 0.001
-    }
-    try:
-        r = requests.post(f"{BASE_URL}/webhook", json=payload, timeout=5)
-        print("[WEBHOOK] Response:", r.status_code, r.json())
-    except Exception as e:
-        print("[WEBHOOK] Could not reach /webhook:", e)
+# ------------------ Load API Credentials ------------------
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ModuleNotFoundError:
+    print("⚠️ python-dotenv not installed. Skipping .env load")
 
-if __name__ == "__main__":
-    print("== Checking Nija Bot ==")
-    check_status()
-    test_webhook()
-    print("== Test Complete ==")
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    print("❌ API_KEY or API_SECRET not set in environment!")
+    sys.exit(1)
+
+# ------------------ Initialize Coinbase Client ------------------
+try:
+    client = cb.Client(API_KEY, API_SECRET)
+    balances = client.get_account_balances()
+    print("💰 Coinbase balances:")
+    for acct, bal in balances.items():
+        print(f"  {acct}: {bal}")
+except Exception as e:
+    print(f"❌ Coinbase API test failed: {e}")
+    sys.exit(1)
+
+print("🎉 Environment & Coinbase API test passed successfully!")
