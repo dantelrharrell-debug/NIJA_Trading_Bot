@@ -1,3 +1,8 @@
+import sys
+print("Python path:", sys.path)
+import pip
+print("Installed packages:", pip.get_installed_distributions())
+
 # main.py (top portion) - paste/replace this block at the top of your file
 
 #!/usr/bin/env python3
