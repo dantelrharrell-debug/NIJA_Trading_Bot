@@ -1,18 +1,11 @@
-import os
-import threading
-import coinbase_advanced_py as cb  # must match package nameimport sys
-print(sys.path)
-import coinbase_advanced_py
-print("coinbase_advanced_py imported successfully!")
-
 # nija_bot.py
 # Nija Trading Bot - Web Service Version
 
-from flask import Flask
 import os
 import threading
 import time
-import coinbase_advanced_py as cb
+from flask import Flask
+import coinbase_advanced_py as cb  # must match package name
 
 # -----------------------
 # Flask setup
@@ -46,7 +39,6 @@ def bot_loop():
             print("Balances:", balances)
 
             # TODO: Add your trading logic here
-            # Example: check price, place orders, etc.
 
             time.sleep(10)  # run loop every 10 seconds
         except Exception as e:
