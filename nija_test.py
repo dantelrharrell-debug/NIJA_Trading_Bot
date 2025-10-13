@@ -1,3 +1,13 @@
+import sys
+print("Python executable:", sys.executable)
+print("sys.path:", sys.path)
+
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py import successful!")
+except ModuleNotFoundError:
+    print("❌ coinbase_advanced_py NOT found")
+
 # nija_bot_test.py
 
 import os
