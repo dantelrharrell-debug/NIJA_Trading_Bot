@@ -1,152 +1,143 @@
 #!/usr/bin/env python3
-"""
-run_nija_bot_wrapper.py - robust aliasing wrapper
-
-Put this at the project root (next to nija_bot.py) and run it instead of
-running nija_bot.py directly. It will try to make `import coinbase_advanced_py`
-succeed by aliasing whatever Coinbase-ish package is actually installed.
-"""
+# run_nija_bot_wrapper.py
+# Force-create sys.modules["coinbase_advanced_py"] so nija_bot.py can import it.
 
 import sys
+import os
 import importlib
 import pkgutil
-import os
 import shutil
 import traceback
 from types import ModuleType
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
-BOT_FILENAME = os.path.join(ROOT, "nija_bot.py")
-BACKUP_FILENAME = os.path.join(ROOT, "nija_bot.py.bak")
+BOT = os.path.join(ROOT, "nija_bot.py")
+BACKUP = os.path.join(ROOT, "nija_bot.py.bak")
 
-def try_import(name):
-    try:
-        return importlib.import_module(name)
-    except Exception:
-        return None
-
-def find_installed_coinbase_like():
-    # Preferred names exactly
-    names = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
-    for n in names:
-        m = try_import(n)
-        if m:
-            return n, m
-    # Fallback: search for top-level modules containing "coin" or "coinbase"
-    for minfo in pkgutil.iter_modules():
-        nm = (minfo.name or "").lower()
-        if "coin" in nm or "coinbase" in nm:
-            m = try_import(minfo.name)
-            if m:
-                return minfo.name, m
+def find_candidate():
+    # Preferred names in order
+    for name in ("coinbase_advanced_py", "coinbase_advanced", "coinbase"):
+        try:
+            m = importlib.import_module(name)
+            return name, m
+        except Exception:
+            continue
+    # Fallback: search top-level modules for "coin" string
+    for info in pkgutil.iter_modules():
+        if "coin" in (info.name or "").lower():
+            try:
+                m = importlib.import_module(info.name)
+                return info.name, m
+            except Exception:
+                continue
     return None, None
 
-def create_alias_module(alias_name, source_mod):
-    """
-    Create a ModuleType with name alias_name and copy public attributes
-    from source_mod. Also attempt to find a 'Client' class in common places
-    and attach it to the alias module to satisfy `from coinbase_advanced_py import Client`.
-    """
-    alias = ModuleType(alias_name)
-    # Basic metadata
-    alias.__file__ = getattr(source_mod, "__file__", None)
-    alias.__package__ = alias_name
-
-    # Copy public attributes
+def attach_client_if_missing(alias_mod, source_mod):
+    # If 'Client' already present, done.
+    if hasattr(alias_mod, "Client"):
+        return True
+    # Search common places for Client
+    candidates = [
+        "client",
+        "rest.client",
+        "rest",
+        "websocket",
+        "client.client",
+        "rest.client.client",
+    ]
+    # Try source_mod and its submodules
+    for c in candidates:
+        try:
+            subname = f"{source_mod.__name__}.{c}"
+            sub = importlib.import_module(subname)
+            if hasattr(sub, "Client"):
+                alias_mod.Client = getattr(sub, "Client")
+                return True
+        except Exception:
+            pass
+    # Also try scanning attributes for something named Client
     for attr in dir(source_mod):
-        if attr.startswith("_"):
+        if attr.lower() == "client" or "client" in attr.lower():
+            try:
+                val = getattr(source_mod, attr)
+                if hasattr(val, "Client"):
+                    alias_mod.Client = getattr(val, "Client")
+                    return True
+            except Exception:
+                pass
+    return False
+
+def create_alias(name, source):
+    alias = ModuleType(name)
+    alias.__file__ = getattr(source, "__file__", None)
+    alias.__package__ = name
+    # copy top-level public attributes
+    for k in dir(source):
+        if k.startswith("_"):
             continue
         try:
-            setattr(alias, attr, getattr(source_mod, attr))
+            setattr(alias, k, getattr(source, k))
         except Exception:
-            # ignore attributes we can't copy
             pass
-
-    # If no Client symbol, attempt to discover it in known submodules
-    if not hasattr(alias, "Client"):
-        tried = []
-        candidates = [
-            "coinbase.rest.client",
-            "coinbase.client",
-            "coinbase.client.client",
-            "coinbase.rest",
-            "coinbase_advanced.client",
-            "coinbase_advanced.rest.client",
-        ]
-        for sub in candidates:
-            try:
-                submod = importlib.import_module(sub)
-                # look for Client in the submodule
-                if hasattr(submod, "Client"):
-                    alias.Client = getattr(submod, "Client")
-                    tried.append(sub)
-                    break
-            except Exception:
-                tried.append(sub)
-                continue
-
+    # try to ensure Client exists if it will be imported
+    attach_client_if_missing(alias, source)
     return alias
 
 def main():
-    print("🔍 Wrapper: scanning installed packages for coinbase module...")
-    found_name, found_mod = find_installed_coinbase_like()
+    print("🔍 Wrapper starting: ensuring coinbase_advanced_py is importable...")
+    found_name, found_mod = find_candidate()
     if not found_mod:
-        print("❌ No coinbase-like module found in the environment.")
-        print("Installed top-level modules (first 200):")
-        print([m.name for m in pkgutil.iter_modules()][:200])
+        print("❌ Could not find any installed coin/coinbase package.")
+        print("Installed modules (first 200):", [m.name for m in pkgutil.iter_modules()][:200])
         sys.exit(1)
 
-    print(f"✅ Found installed package: '{found_name}' -> {getattr(found_mod, '__file__', None)}")
+    print(f"✅ Found installed package: {found_name} -> {getattr(found_mod,'__file__',None)}")
 
-    # If coinbase_advanced_py is importable already, nothing to do
-    if try_import("coinbase_advanced_py"):
-        print("ℹ️ 'coinbase_advanced_py' is already importable. Running bot directly.")
-    else:
-        print("➡️ Creating alias module 'coinbase_advanced_py' in sys.modules ...")
-        alias = create_alias_module("coinbase_advanced_py", found_mod)
-        # preserve original under a debug name
+    # If coinbase_advanced_py already importable, show and continue
+    try:
+        import coinbase_advanced_py  # noqa: F401
+        print("ℹ️ coinbase_advanced_py already importable; running bot normally.")
+    except Exception:
+        # Create alias module and insert into sys.modules BEFORE running bot
+        print("➡️ Creating alias sys.modules['coinbase_advanced_py'] -> installed package object")
+        alias = create_alias("coinbase_advanced_py", found_mod)
+        # also keep the original module available for debugging
         sys.modules[f"__orig_{found_name}__"] = found_mod
-        # set alias
         sys.modules["coinbase_advanced_py"] = alias
-        print("✅ sys.modules patched: 'coinbase_advanced_py' -> alias module")
-
-        # Extra verification prints for debugging
+        # sanity check
         try:
             import importlib
             importlib.invalidate_caches()
-            test = importlib.import_module("coinbase_advanced_py")
-            print("🔬 Test import successful. coinbase_advanced_py ->", getattr(test, "__file__", None))
-            if hasattr(test, "Client"):
-                print("🔧 'Client' is present on alias module.")
-            else:
-                print("⚠️ 'Client' not found on alias module. If your code does `from coinbase_advanced_py import Client`,")
-                print("   you may need to add a specific import path. Tell me the exact import line and I will adapt.")
+            t = importlib.import_module("coinbase_advanced_py")
+            print("🔬 Test import OK:", getattr(t, "__file__", None))
+            print("🔧 Has Client?:", hasattr(t, "Client"))
         except Exception:
-            print("‼️ Test import failed even after aliasing. Continuing to exec the bot (you'll see errors).")
+            print("⚠️ Test import failed after aliasing (this is unexpected).")
+            traceback.print_exc()
 
-    # Backup bot file (best effort)
-    if os.path.exists(BOT_FILENAME):
+    # Backup bot
+    if os.path.exists(BOT):
         try:
-            shutil.copy2(BOT_FILENAME, BACKUP_FILENAME)
-            print(f"💾 Backed up '{BOT_FILENAME}' -> '{BACKUP_FILENAME}'")
-        except Exception as e:
-            print("⚠️ Could not back up nija_bot.py:", e)
+            shutil.copy2(BOT, BACKUP)
+            print(f"💾 Backed up {BOT} -> {BACKUP}")
+        except Exception:
+            print("⚠️ Could not back up bot (permissions?)")
 
-    # Execute nija_bot.py in current process
-    if not os.path.exists(BOT_FILENAME):
-        print("❌ nija_bot.py not found at expected path:", BOT_FILENAME)
+    # Execute bot in-process so imports use our sys.modules patch
+    if not os.path.exists(BOT):
+        print("❌ nija_bot.py not found at:", BOT)
         sys.exit(1)
 
-    print("▶️ Executing nija_bot.py now (will run in current process).")
+    print("▶️ Executing nija_bot.py (imports will use patched sys.modules)...\n")
     try:
-        with open(BOT_FILENAME, "rb") as f:
-            code = compile(f.read(), BOT_FILENAME, "exec")
-            globals_map = {"__name__": "__main__", "__file__": BOT_FILENAME}
+        with open(BOT, "rb") as f:
+            code = compile(f.read(), BOT, "exec")
+            globals_map = {"__name__": "__main__", "__file__": BOT}
             exec(code, globals_map)
     except SystemExit:
         raise
     except Exception:
-        print("❌ Exception while executing nija_bot.py:")
+        print("❌ Exception while running nija_bot.py:")
         traceback.print_exc()
         sys.exit(1)
 
