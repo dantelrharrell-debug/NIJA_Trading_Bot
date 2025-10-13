@@ -5,13 +5,13 @@ import os
 import threading
 import time
 from flask import Flask
-import coinbase_advanced_py as cb  # must match package name
+import coinbase_advanced_py as cb
 
 # -----------------------
 # Flask setup
 # -----------------------
 app = Flask(__name__)
-PORT = int(os.environ.get("PORT", 10000))  # Render injects PORT
+PORT = int(os.environ.get("PORT", 10000))  # Render injects PORT automatically
 
 @app.route("/")
 def heartbeat():
@@ -39,6 +39,7 @@ def bot_loop():
             print("Balances:", balances)
 
             # TODO: Add your trading logic here
+            # Example: check price, place orders, etc.
 
             time.sleep(10)  # run loop every 10 seconds
         except Exception as e:
