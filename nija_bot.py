@@ -1,3 +1,24 @@
+# === Coinbase Advanced Import (resilient) ===
+print("🔍 Checking for coinbase_advanced_py module...")
+
+cb = None
+try:
+    import coinbase_advanced_py as cb
+    print("✅ Imported coinbase_advanced_py successfully!")
+except ModuleNotFoundError:
+    try:
+        import coinbase_advanced as cb
+        print("✅ Imported coinbase_advanced (fallback) successfully!")
+    except ModuleNotFoundError:
+        try:
+            import coinbase as cb
+            print("✅ Imported coinbase (legacy) successfully!")
+        except ModuleNotFoundError:
+            print("❌ Could not import any Coinbase module. Check installation.")
+            import sys
+            sys.exit(1)
+
+# Once imported, you can safely use cb.Client
 try:
     import coinbase_advanced_py as cb
     print("✅ coinbase_advanced_py imported successfully!")
