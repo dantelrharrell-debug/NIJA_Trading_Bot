@@ -1,3 +1,67 @@
+# -----------------------
+# safe_coinbase_bootstrap.py (drop at top of bot)
+# -----------------------
+import importlib
+import inspect
+import os
+import pkgutil
+import traceback
+from dotenv import load_dotenv
+
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+def find_coinbase_client_class():
+    candidates = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
+    
+    for pkg_name in candidates:
+        try:
+            pkg = importlib.import_module(pkg_name)
+        except ModuleNotFoundError:
+            continue
+
+        # Inspect top-level classes
+        for name, obj in inspect.getmembers(pkg):
+            if inspect.isclass(obj) and "client" in name.lower():
+                return pkg_name, obj
+
+        # Inspect submodules if package has __path__
+        if hasattr(pkg, "__path__"):
+            for finder, sub_name, ispkg in pkgutil.iter_modules(pkg.__path__):
+                fullname = f"{pkg_name}.{sub_name}"
+                try:
+                    submod = importlib.import_module(fullname)
+                except Exception:
+                    continue
+                for name, obj in inspect.getmembers(submod):
+                    if inspect.isclass(obj) and "client" in name.lower():
+                        return fullname, obj
+    return None, None
+
+pkg_location, ClientClass = find_coinbase_client_class()
+
+if ClientClass is None:
+    print("❌ No usable Coinbase Client class found. Trading disabled.")
+    COINBASE_CLIENT = None
+else:
+    print(f"✅ Found Coinbase Client: {ClientClass} at {pkg_location}")
+    if not API_KEY or not API_SECRET:
+        print("❌ API_KEY or API_SECRET missing. Cannot instantiate client.")
+        COINBASE_CLIENT = None
+    else:
+        try:
+            client = ClientClass(API_KEY, API_SECRET)
+            print(f"✅ Coinbase client created successfully! ({type(client)})")
+            COINBASE_CLIENT = client
+        except Exception as e:
+            print("❌ Error creating Coinbase client:", e)
+            traceback.print_exc()
+            COINBASE_CLIENT = None
+
+# Safe export for the bot
+cb_client = COINBASE_CLIENT
 import coinbase_advanced_py
 import inspect
 
