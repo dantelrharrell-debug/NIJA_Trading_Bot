@@ -1,5 +1,1 @@
-try:
-    from coinbase.rest import RESTClient
-    print("✅ Coinbase RESTClient ready")
-except ImportError as e:
-    raise SystemExit("❌ Coinbase RESTClient not installed:", e)
+python-3.11.8
