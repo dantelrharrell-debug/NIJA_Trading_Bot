@@ -1,6 +1,38 @@
 #!/usr/bin/env python3
 import os
 import sys
+import json
+import traceback
+
+# ------------------ TEST IMPORT ------------------
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py import successful!")
+except ModuleNotFoundError:
+    print("❌ coinbase_advanced_py NOT found")
+    sys.exit(1)  # Stop script if package isn't installed
+
+# ------------------ Other imports ------------------
+import flask
+import pandas as pd
+
+print("✅ Flask and Pandas imported successfully!")
+
+# ------------------ Load API Keys ------------------
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
+
+# ------------------ Initialize Coinbase Client ------------------
+client = cb.Client(API_KEY, API_SECRET)
+balances = client.get_account_balances()
+print("💰 Coinbase balances:", balances)
+
+#!/usr/bin/env python3
+import os
+import sys
 import traceback
 import importlib
 from dotenv import load_dotenv
