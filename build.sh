@@ -1,34 +1,10 @@
-#!/bin/bash
-set -e
+#!/bin/sh
 
-# ------------------------
-# Rebuild virtual environment if missing or corrupted
-# ------------------------
-if [ ! -d ".venv" ]; then
-    echo "🛠 .venv missing. Creating virtual environment..."
-else
-    echo "🛠 .venv exists. Checking for coinbase_advanced_py..."
-    source .venv/bin/activate
-    if ! python3 -c "import coinbase_advanced_py" &> /dev/null; then
-        echo "⚠️ coinbase_advanced_py not found in .venv. Rebuilding..."
-        rm -rf .venv
-    fi
-    deactivate
-fi
+# Create virtual environment
+python3 -m venv .venv || exit 1
+.venv/bin/python -m ensurepip --upgrade || exit 1
+.venv/bin/pip install --upgrade pip || exit 1
+.venv/bin/pip install -r requirements.txt || exit 1
 
-# ------------------------
-# Create venv
-# ------------------------
-echo "🛠 Creating virtual environment..."
-python3 -m venv .venv
-
-echo "🛠 Activating virtual environment..."
-source .venv/bin/activate
-
-echo "🛠 Upgrading pip..."
-python3 -m pip install --upgrade pip
-
-echo "🛠 Installing required packages..."
-python3 -m pip install -r requirements.txt
-
-echo "✅ Build complete!"
+# Run the bot
+.venv/bin/python main.py
