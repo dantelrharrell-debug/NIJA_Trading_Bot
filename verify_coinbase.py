@@ -22,3 +22,4 @@ try:
 except Exception:
     traceback.print_exc()
     print("IMPORT FAILED")
+    exit(1)
