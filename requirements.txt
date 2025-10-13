@@ -30,7 +30,7 @@ flask==3.1.2
 
 # Data manipulation
 numpy==1.26.4
-pandas==2.2.6
+pandas==2.3.3
 
 # Build tools
 wheel
