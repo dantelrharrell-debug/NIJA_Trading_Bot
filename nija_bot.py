@@ -1,3 +1,9 @@
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py imported successfully!")
+except Exception as e:
+    print("❌ Failed to import coinbase_advanced_py:", e)
+    raise
 print("🚀 Nija Trading Bot starting...")
 import sys
 print("Python executable:", sys.executable)
