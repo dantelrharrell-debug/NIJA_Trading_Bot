@@ -1,48 +1,39 @@
 # -----------------------
-# nija_bot_autofix.py
+# nija_bot.py
+# -----------------------
+import os
+import time
+import threading
+import traceback
+from flask import Flask, jsonify
+
+# -----------------------
+# Safe Coinbase bootstrap
 # -----------------------
 import importlib
 import inspect
-import os
 import pkgutil
-import subprocess
-import sys
-import threading
-import time
-import traceback
 from dotenv import load_dotenv
-from flask import Flask
 
-# -----------------------
-# Load environment
-# -----------------------
 load_dotenv()
+
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
-# -----------------------
-# Ensure correct Coinbase package
-# -----------------------
-def ensure_coinbase_client():
-    """
-    Ensures a usable coinbase client exists.
-    Attempts to downgrade/install if Client class missing.
-    """
+def find_coinbase_client_class():
     candidates = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
-
     for pkg_name in candidates:
         try:
             pkg = importlib.import_module(pkg_name)
         except ModuleNotFoundError:
             continue
 
-        # top-level class check
+        # top-level classes
         for name, obj in inspect.getmembers(pkg):
             if inspect.isclass(obj) and "client" in name.lower():
-                print(f"✅ Found Client in {pkg_name}")
-                return obj
+                return pkg, obj
 
-        # submodule check
+        # submodules
         if hasattr(pkg, "__path__"):
             for finder, sub_name, ispkg in pkgutil.iter_modules(pkg.__path__):
                 fullname = f"{pkg_name}.{sub_name}"
@@ -52,47 +43,26 @@ def ensure_coinbase_client():
                     continue
                 for name, obj in inspect.getmembers(submod):
                     if inspect.isclass(obj) and "client" in name.lower():
-                        print(f"✅ Found Client in {fullname}")
-                        return obj
+                        return submod, obj
+    return None, None
 
-    # Fallback: suggest downgrade for coinbase_advanced_py
-    try:
-        import coinbase_advanced_py as cap
-        print("🔍 Client class missing in coinbase_advanced_py. Attempting fallback to v1.7.4...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "coinbase-advanced-py==1.7.4"], check=True)
-        import importlib
-        importlib.reload(cap)
-        for name, obj in inspect.getmembers(cap):
-            if inspect.isclass(obj) and "client" in name.lower():
-                print("✅ Found Client after downgrade!")
-                return obj
-    except Exception as e:
-        print("❌ Could not fix coinbase_advanced_py automatically:", e)
-
-    print("❌ No usable Coinbase Client found.")
-    return None
-
-# -----------------------
-# Instantiate client
-# -----------------------
-ClientClass = ensure_coinbase_client()
+pkg, ClientClass = find_coinbase_client_class()
 if ClientClass is None:
-    COINBASE_CLIENT = None
+    print("❌ No usable Coinbase Client class found. Trading disabled.")
+    cb_client = None
 else:
+    print(f"✅ Found Coinbase Client: {ClientClass}")
     if not API_KEY or not API_SECRET:
         print("❌ API_KEY or API_SECRET missing. Cannot instantiate client.")
-        COINBASE_CLIENT = None
+        cb_client = None
     else:
         try:
-            COINBASE_CLIENT = ClientClass(API_KEY, API_SECRET)
-            print(f"✅ Coinbase client created successfully! ({type(COINBASE_CLIENT)})")
+            cb_client = ClientClass(API_KEY, API_SECRET)
+            print(f"✅ Coinbase client created successfully! ({type(cb_client)})")
         except Exception as e:
             print("❌ Error creating Coinbase client:", e)
             traceback.print_exc()
-            COINBASE_CLIENT = None
-
-# safe export
-cb_client = COINBASE_CLIENT
+            cb_client = None
 
 # -----------------------
 # Flask setup
@@ -104,26 +74,49 @@ PORT = int(os.environ.get("PORT", 10000))
 def heartbeat():
     return "Nija Trading Bot is alive! 🟢"
 
+@app.route("/balances")
+def balances():
+    if cb_client is None:
+        return jsonify({"error": "Coinbase client not available"}), 400
+    try:
+        accounts = cb_client.get_accounts()
+        balances_data = [
+            {"currency": acct.get("currency"), "balance": acct.get("balance", {}).get("amount")}
+            for acct in accounts
+        ]
+        return jsonify({"balances": balances_data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # -----------------------
-# Trading bot loop
+# Trading Bot Loop (RESTClient-compatible)
 # -----------------------
 def bot_loop():
     live_trading = os.getenv("LIVE_TRADING", "False") == "True"
 
     if cb_client is None:
-        print("❌ Coinbase client unavailable. Trading loop disabled.")
+        print("❌ Coinbase client not available. Bot cannot start.")
         return
 
     print(f"🟢 Bot thread started - LIVE_TRADING: {live_trading}")
 
     while True:
         try:
-            balances = cb_client.get_account_balances()
-            print("Balances:", balances)
+            accounts = cb_client.get_accounts()
+            print("📊 Account Balances:")
+            for acct in accounts:
+                currency = acct.get("currency")
+                balance = acct.get("balance", {}).get("amount")
+                print(f" - {currency}: {balance}")
+
             # TODO: Add trading logic here
+            if live_trading:
+                print("⚡ Live trading logic would execute here...")
+
             time.sleep(10)
         except Exception as e:
             print("❌ Error in bot loop:", e)
+            traceback.print_exc()
             time.sleep(5)
 
 # -----------------------
@@ -134,7 +127,7 @@ bot_thread.daemon = True
 bot_thread.start()
 
 # -----------------------
-# Start Flask web service
+# Start Flask web server
 # -----------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
