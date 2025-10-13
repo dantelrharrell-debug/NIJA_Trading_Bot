@@ -1,3 +1,26 @@
+# DEBUG / dependency check — put this near the top of main.py
+import sys
+import pkgutil
+import importlib.util
+
+try:
+    # import the SDK the way it is distributed
+    from coinbase.rest import RESTClient
+    print("✅ coinbase (coinbase-advanced-py) import successful: from coinbase.rest import RESTClient")
+except ModuleNotFoundError:
+    print("❌ coinbase NOT found (package may not be installed into this Python interpreter)")
+    print("Python executable:", sys.executable)
+    print("sys.path (sample):", sys.path[:6])
+    # Optional: exit to fail fast
+    # import sys; sys.exit(1)
+
+# Optional lightweight check (keeps previous behaviour but uses the correct name)
+try:
+    import coinbase
+    print("✅ coinbase import OK")
+except ModuleNotFoundError:
+    print("❌ coinbase import failed")
+
 # main.py (near the top, after .env/API keys loaded)
 import sys
 import pkgutil
