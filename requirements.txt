@@ -1,37 +1,16 @@
-# Coinbase API
 coinbase-advanced-py==1.8.2
-
-# Security & Auth
 cryptography>=46.0.2
 PyJWT>=2.10.1
-
-# HTTP requests
 requests>=2.31.0
-urllib3>=1.26.0,<3
-certifi>=2025.10.5
-idna>=3.4,<4
-charset_normalizer>=2.1.0,<4
-
-# Retry/backoff
+urllib3<3,>=1.26.0
 backoff>=2.2.1
-
-# C extensions
 cffi>=2.0.0
-
-# Async support
-websockets>=12.0,<14
-
-# Environment variables
+charset_normalizer<4,>=2.1.0
+idna<4,>=3.4
+websockets<14,>=12.0
+certifi>=2025.10.5
 python-dotenv==1.1.1
-
-# Web server
 gunicorn>=20.0.0
 flask==3.1.2
-
-# Data manipulation
 numpy==1.26.4
 pandas==2.3.3
-
-# Build tools
-wheel
-setuptools
