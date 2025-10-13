@@ -1,3 +1,6 @@
+import sys
+print("Python executable:", sys.executable)
+print("sys.path:", sys.path)
 import os
 import threading
 import time
