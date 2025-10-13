@@ -16,7 +16,6 @@ print("✅ sys.path:", sys.path)
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 LIVE_TRADING = os.getenv("LIVE_TRADING", "False").lower() == "true"
-PORT = int(os.getenv("PORT", 10000))
 
 if not API_KEY or not API_SECRET:
     raise SystemExit("❌ API_KEY or API_SECRET not set. Add them to your environment variables.")
@@ -37,7 +36,7 @@ def init_coinbase_client():
     return None
 
 # ------------------------
-# AUTO-RETRY LOOP
+# AUTO-RETRY LOOP FOR CLIENT
 # ------------------------
 client = None
 while client is None:
@@ -58,10 +57,10 @@ except Exception as e:
 # LIVE TRADING INFO
 # ------------------------
 print(f"LIVE_TRADING: {LIVE_TRADING}")
-print(f"Service running on PORT: {PORT}")
+print("✅ Worker is ready and running")
 
 # ------------------------
-# EXAMPLE BOT LOOP (replace with your trading logic)
+# BOT LOGIC LOOP
 # ------------------------
 try:
     while True:
@@ -70,6 +69,6 @@ try:
             print("📈 Current BTC price:", btc_price)
         except Exception as e:
             print(f"⚠️ Error fetching BTC price: {e}")
-        time.sleep(10)  # Adjust frequency for your strategy
+        time.sleep(10)  # adjust frequency for your strategy
 except KeyboardInterrupt:
     print("🛑 Bot stopped manually")
