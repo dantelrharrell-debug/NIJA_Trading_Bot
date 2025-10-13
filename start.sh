@@ -1,11 +1,11 @@
 #!/bin/bash
-# Activate virtual environment
+# Activate the venv
 . .venv/bin/activate
 
-# Optional: show Python version and pip packages (debug info)
-echo "Python version: $(python3 --version)"
-echo "Installed packages:"
-pip list
+# Optional debug info
+echo "Python executable: $(which python3)"
+echo "Pip packages installed:"
+pip list | grep coin
 
 # Start your bot
 python3 nija_bot.py
