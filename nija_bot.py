@@ -1,3 +1,22 @@
+import os
+import coinbase_advanced_py as cb
+
+# Debug: Check environment variables
+api_key = os.getenv("API_KEY")
+api_secret = os.getenv("API_SECRET")
+
+if not api_key or not api_secret:
+    print("❌ API_KEY or API_SECRET not set!")
+else:
+    print("✅ API_KEY and API_SECRET detected")
+
+# Debug: Test importing the package and creating a client
+try:
+    client = cb.Client(api_key, api_secret)
+    print("✅ coinbase_advanced_py imported and client created successfully!")
+except Exception as e:
+    print("❌ Error creating Coinbase client:", e)
+
 # nija_bot.py
 # Nija Trading Bot - Web Service Version
 
