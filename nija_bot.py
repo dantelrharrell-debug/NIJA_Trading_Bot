@@ -1,4 +1,4 @@
-# nija_bot.py
+# nija_bot_multi.py
 import os
 import time
 from coinbase_advanced_py import Client
@@ -12,7 +12,6 @@ API_SECRET = os.getenv("API_SECRET")
 if not API_KEY or not API_SECRET:
     raise SystemExit("❌ API_KEY or API_SECRET not set. Make sure both are in your environment variables.")
 
-# Coinbase client
 try:
     cb_client = Client(API_KEY, API_SECRET)
     print("✅ Coinbase client initialized.")
@@ -22,7 +21,7 @@ except Exception as e:
 # -----------------------------
 # 2️⃣ Helper functions
 # -----------------------------
-def get_account_balance(currency="USD"):
+def get_account_balance(currency):
     try:
         accounts = cb_client.get_accounts()
         for acct in accounts:
@@ -30,7 +29,7 @@ def get_account_balance(currency="USD"):
                 return float(acct["balance"]["amount"])
         return 0.0
     except Exception as e:
-        print("❌ Error fetching accounts:", e)
+        print(f"❌ Error fetching {currency} balance:", e)
         return 0.0
 
 def place_market_order(symbol, side, size):
@@ -44,40 +43,51 @@ def place_market_order(symbol, side, size):
         print(f"✅ {side.upper()} order placed for {size} {symbol}")
         return order
     except Exception as e:
-        print("❌ Failed to place order:", e)
+        print(f"❌ Failed to place {side} order for {symbol}:", e)
         return None
 
 # -----------------------------
-# 3️⃣ Trading loop skeleton
+# 3️⃣ Multi-ticker setup
 # -----------------------------
-TRADE_SYMBOL = "BTC-USD"  # Change if needed
-MIN_POSITION = 0.02       # 2% of account
-MAX_POSITION = 0.10       # 10% of account
+TICKERS = ["BTC-USD", "ETH-USD", "SOL-USD", "LTC-USD"]  # Add all your tickers here
 
-print("🚀 Starting trading loop...")
+MIN_POSITION = 0.02  # 2% of account
+MAX_POSITION = 0.10  # 10% of account
+
+print("🚀 Starting multi-ticker trading loop...")
 
 while True:
     try:
-        # 1. Fetch current balance
         usd_balance = get_account_balance("USD")
         print(f"💵 USD Balance: {usd_balance}")
 
-        # 2. Placeholder for signals (VWAP, RSI, etc.)
-        # Replace this with your actual strategy
-        signal = "buy"  # Example: "buy" or "sell" or None
+        for ticker in TICKERS:
+            print(f"🔹 Checking signals for {ticker}...")
 
-        # 3. Calculate trade size (aggressive but safe)
-        if signal == "buy":
-            size = max(MIN_POSITION, min(MAX_POSITION, usd_balance * 0.05))  # Example: 5% of balance
-            place_market_order(TRADE_SYMBOL, "buy", size)
-        elif signal == "sell":
-            # Fetch crypto balance
-            crypto_balance = get_account_balance("BTC")
-            size = max(MIN_POSITION, min(MAX_POSITION, crypto_balance * 0.05))
-            place_market_order(TRADE_SYMBOL, "sell", size)
+            # -----------------------------
+            # 4️⃣ Placeholder for signals
+            # Replace with your VWAP, RSI, or custom strategy
+            # -----------------------------
+            signal = None
+            # Example logic: simple mock
+            if ticker == "BTC-USD":
+                signal = "buy"
+            elif ticker == "ETH-USD":
+                signal = "sell"
 
-        # 4. Wait before next check
-        time.sleep(30)  # check every 30 seconds
+            # -----------------------------
+            # 5️⃣ Determine trade size
+            # -----------------------------
+            if signal == "buy":
+                size = max(MIN_POSITION, min(MAX_POSITION, usd_balance * 0.05))
+                place_market_order(ticker, "buy", size)
+            elif signal == "sell":
+                crypto_symbol = ticker.split("-")[0]
+                crypto_balance = get_account_balance(crypto_symbol)
+                size = max(MIN_POSITION, min(MAX_POSITION, crypto_balance * 0.05))
+                place_market_order(ticker, "sell", size)
+
+        time.sleep(30)  # wait 30 seconds before next iteration
     except KeyboardInterrupt:
         print("🛑 Trading loop stopped by user.")
         break
