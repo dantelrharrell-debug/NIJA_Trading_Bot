@@ -108,3 +108,6 @@ if __name__ == "__main__":
     print("✅ Environment variables loaded")
     start_bot()
     app.run(host="0.0.0.0", port=PORT)
+
+if __name__ == "__main__":
+    start_flask()
