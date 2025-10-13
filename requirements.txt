@@ -9,3 +9,5 @@ charset_normalizer
 idna
 websockets
 certifi
+python-dotenv
+requests>=2.31.0
