@@ -2,7 +2,7 @@ services:
   - type: worker
     name: nija-bot
     env: python
-    plan: starter  # or whatever plan you use
+    plan: starter  # or your plan
     branch: main   # your Git branch
     buildCommand: |
       python3 -m venv .venv
