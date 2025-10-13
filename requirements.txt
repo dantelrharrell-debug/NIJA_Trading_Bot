@@ -1,3 +1,5 @@
+# Nija Trading Bot dependencies
+
 coinbase-advanced-py==1.8.2
 cryptography>=42.0.4
 PyJWT>=2.8.0
@@ -10,5 +12,5 @@ idna>=2.5,<4
 websockets>=12.0,<14.0
 certifi>=2017.4.17
 python-dotenv==1.1.1
-flask>=3.0.0
-gunicorn>=20.0.0
+flask>=3.1.0
+gunicorn>=23.0.0
