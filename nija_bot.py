@@ -1,10 +1,12 @@
 # -----------------------
-# nija_bot_safe.py
+# nija_bot_autofix.py
 # -----------------------
 import importlib
 import inspect
 import os
 import pkgutil
+import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -19,23 +21,28 @@ API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
 # -----------------------
-# Safe Coinbase client bootstrap
+# Ensure correct Coinbase package
 # -----------------------
-def find_coinbase_client_class():
+def ensure_coinbase_client():
+    """
+    Ensures a usable coinbase client exists.
+    Attempts to downgrade/install if Client class missing.
+    """
     candidates = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
-    
+
     for pkg_name in candidates:
         try:
             pkg = importlib.import_module(pkg_name)
         except ModuleNotFoundError:
             continue
 
-        # top-level classes
+        # top-level class check
         for name, obj in inspect.getmembers(pkg):
             if inspect.isclass(obj) and "client" in name.lower():
-                return pkg_name, obj
+                print(f"✅ Found Client in {pkg_name}")
+                return obj
 
-        # inspect submodules
+        # submodule check
         if hasattr(pkg, "__path__"):
             for finder, sub_name, ispkg in pkgutil.iter_modules(pkg.__path__):
                 fullname = f"{pkg_name}.{sub_name}"
@@ -45,16 +52,33 @@ def find_coinbase_client_class():
                     continue
                 for name, obj in inspect.getmembers(submod):
                     if inspect.isclass(obj) and "client" in name.lower():
-                        return fullname, obj
-    return None, None
+                        print(f"✅ Found Client in {fullname}")
+                        return obj
 
-pkg_location, ClientClass = find_coinbase_client_class()
+    # Fallback: suggest downgrade for coinbase_advanced_py
+    try:
+        import coinbase_advanced_py as cap
+        print("🔍 Client class missing in coinbase_advanced_py. Attempting fallback to v1.7.4...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "coinbase-advanced-py==1.7.4"], check=True)
+        import importlib
+        importlib.reload(cap)
+        for name, obj in inspect.getmembers(cap):
+            if inspect.isclass(obj) and "client" in name.lower():
+                print("✅ Found Client after downgrade!")
+                return obj
+    except Exception as e:
+        print("❌ Could not fix coinbase_advanced_py automatically:", e)
 
+    print("❌ No usable Coinbase Client found.")
+    return None
+
+# -----------------------
+# Instantiate client
+# -----------------------
+ClientClass = ensure_coinbase_client()
 if ClientClass is None:
-    print("❌ No usable Coinbase Client class found. Trading disabled.")
     COINBASE_CLIENT = None
 else:
-    print(f"✅ Found Coinbase Client: {ClientClass} at {pkg_location}")
     if not API_KEY or not API_SECRET:
         print("❌ API_KEY or API_SECRET missing. Cannot instantiate client.")
         COINBASE_CLIENT = None
