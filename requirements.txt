@@ -1,18 +1,3 @@
-# Nija Trading Bot
-# This is a Coinbase trading bot using `coinbase_advanced_py`.
-# It is designed to run as a Render Background Worker.
-#
-# Setup:
-# 1. Add environment variables in Render:
-#    - API_KEY → Coinbase API key
-#    - API_SECRET → Coinbase secret
-#    - LIVE_TRADING → False or True
-#
-# 2. Deploy as a Worker service.
-# 3. The bot will automatically start, self-heal on crashes, and log prices.
-#
-# ✅ No ports needed → green checks appear automatically.
-
 coinbase-advanced-py==1.8.2
 cryptography>=42.0.4
 PyJWT>=2.8.0
