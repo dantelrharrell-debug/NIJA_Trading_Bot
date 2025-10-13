@@ -1,13 +1,14 @@
-import os
-from dotenv import load_dotenv
-import coinbase_advanced_py as cb  # no Client class here
+# coinbase_advanced_py.py
+# shim so code that does `import coinbase_advanced_py` finds the installed `coinbase` package
 
-# Load environment variables
-load_dotenv()
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+try:
+    import coinbase as _coinbase_pkg
+except Exception as e:
+    # re-raise so failures are visible
+    raise
 
-# Example: fetch accounts/balances using the functions provided
-accounts = cb.get_accounts(api_key=API_KEY, api_secret=API_SECRET)
-for acc in accounts:
-    print(acc['currency'], acc['available'])
+# Re-export everything from the coinbase package (so old imports still work)
+from coinbase import *  # noqa: F401,F403
+
+# optional: expose __all__ if the wrapped package defines it
+__all__ = getattr(_coinbase_pkg, "__all__", [])
