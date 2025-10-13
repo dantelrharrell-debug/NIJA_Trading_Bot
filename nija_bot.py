@@ -1,136 +1,86 @@
-# -----------------------
 # nija_bot.py
-# -----------------------
 import os
 import time
-import threading
-import traceback
-from flask import Flask, jsonify
+from coinbase_advanced_py import Client
 
-# -----------------------
-# Safe Coinbase bootstrap
-# -----------------------
-import importlib
-import inspect
-import pkgutil
-from dotenv import load_dotenv
-
-load_dotenv()
-
+# -----------------------------
+# 1️⃣ Load API credentials
+# -----------------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-LIVE_TRADING = os.getenv("LIVE_TRADING", "False") == "True"
 
-def find_coinbase_client_class():
-    candidates = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
-    for pkg_name in candidates:
-        try:
-            pkg = importlib.import_module(pkg_name)
-        except ModuleNotFoundError:
-            continue
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set. Make sure both are in your environment variables.")
 
-        # top-level classes
-        for name, obj in inspect.getmembers(pkg):
-            if inspect.isclass(obj) and "client" in name.lower():
-                return pkg, obj
+# Coinbase client
+try:
+    cb_client = Client(API_KEY, API_SECRET)
+    print("✅ Coinbase client initialized.")
+except Exception as e:
+    raise SystemExit(f"❌ Failed to initialize Coinbase client: {e}")
 
-        # submodules
-        if hasattr(pkg, "__path__"):
-            for finder, sub_name, ispkg in pkgutil.iter_modules(pkg.__path__):
-                fullname = f"{pkg_name}.{sub_name}"
-                try:
-                    submod = importlib.import_module(fullname)
-                except Exception:
-                    continue
-                for name, obj in inspect.getmembers(submod):
-                    if inspect.isclass(obj) and "client" in name.lower():
-                        return submod, obj
-    return None, None
-
-pkg, ClientClass = find_coinbase_client_class()
-if ClientClass is None:
-    print("❌ No usable Coinbase Client class found. Trading disabled.")
-    cb_client = None
-else:
-    print(f"✅ Found Coinbase Client: {ClientClass}")
-    if not API_KEY or not API_SECRET:
-        print("❌ API_KEY or API_SECRET missing. Cannot instantiate client.")
-        cb_client = None
-    else:
-        try:
-            cb_client = ClientClass(API_KEY, API_SECRET)
-            print(f"✅ Coinbase client created successfully! ({type(cb_client)})")
-        except Exception as e:
-            print("❌ Error creating Coinbase client:", e)
-            traceback.print_exc()
-            cb_client = None
-
-# -----------------------
-# Flask setup
-# -----------------------
-app = Flask(__name__)
-PORT = int(os.environ.get("PORT", 10000))
-
-@app.route("/")
-def heartbeat():
-    return "Nija Trading Bot is alive! 🟢"
-
-@app.route("/balances")
-def balances():
-    if cb_client is None:
-        return jsonify({"error": "Coinbase client not available"}), 400
+# -----------------------------
+# 2️⃣ Helper functions
+# -----------------------------
+def get_account_balance(currency="USD"):
     try:
         accounts = cb_client.get_accounts()
-        balances_data = [
-            {"currency": acct.get("currency"), "balance": acct.get("balance", {}).get("amount")}
-            for acct in accounts
-        ]
-        return jsonify({"balances": balances_data})
+        for acct in accounts:
+            if acct["currency"] == currency:
+                return float(acct["balance"]["amount"])
+        return 0.0
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("❌ Error fetching accounts:", e)
+        return 0.0
 
-# -----------------------
-# Trading Bot Loop (RESTClient-compatible)
-# -----------------------
-def bot_loop():
-    if cb_client is None:
-        print("❌ Coinbase client not available. Bot cannot start.")
-        return
+def place_market_order(symbol, side, size):
+    try:
+        order = cb_client.place_order(
+            product_id=symbol,
+            side=side,
+            type="market",
+            size=size
+        )
+        print(f"✅ {side.upper()} order placed for {size} {symbol}")
+        return order
+    except Exception as e:
+        print("❌ Failed to place order:", e)
+        return None
 
-    mode = "LIVE TRADING" if LIVE_TRADING else "SIMULATION"
-    print(f"🟢 Bot thread started - Mode: {mode}")
+# -----------------------------
+# 3️⃣ Trading loop skeleton
+# -----------------------------
+TRADE_SYMBOL = "BTC-USD"  # Change if needed
+MIN_POSITION = 0.02       # 2% of account
+MAX_POSITION = 0.10       # 10% of account
 
-    while True:
-        try:
-            accounts = cb_client.get_accounts()
-            print("📊 Account Balances:")
-            for acct in accounts:
-                currency = acct.get("currency")
-                balance = acct.get("balance", {}).get("amount")
-                print(f" - {currency}: {balance}")
+print("🚀 Starting trading loop...")
 
-            # Trading logic placeholder
-            if LIVE_TRADING:
-                print("⚡ Executing LIVE trading logic...")
-                # TODO: Place your live trades here
-            else:
-                print("⚡ SIMULATION mode: trades are NOT executed")
+while True:
+    try:
+        # 1. Fetch current balance
+        usd_balance = get_account_balance("USD")
+        print(f"💵 USD Balance: {usd_balance}")
 
-            time.sleep(10)
-        except Exception as e:
-            print("❌ Error in bot loop:", e)
-            traceback.print_exc()
-            time.sleep(5)
+        # 2. Placeholder for signals (VWAP, RSI, etc.)
+        # Replace this with your actual strategy
+        signal = "buy"  # Example: "buy" or "sell" or None
 
-# -----------------------
-# Start bot in background thread
-# -----------------------
-bot_thread = threading.Thread(target=bot_loop)
-bot_thread.daemon = True
-bot_thread.start()
+        # 3. Calculate trade size (aggressive but safe)
+        if signal == "buy":
+            size = max(MIN_POSITION, min(MAX_POSITION, usd_balance * 0.05))  # Example: 5% of balance
+            place_market_order(TRADE_SYMBOL, "buy", size)
+        elif signal == "sell":
+            # Fetch crypto balance
+            crypto_balance = get_account_balance("BTC")
+            size = max(MIN_POSITION, min(MAX_POSITION, crypto_balance * 0.05))
+            place_market_order(TRADE_SYMBOL, "sell", size)
 
-# -----------------------
-# Start Flask web server
-# -----------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+        # 4. Wait before next check
+        time.sleep(30)  # check every 30 seconds
+    except KeyboardInterrupt:
+        print("🛑 Trading loop stopped by user.")
+        break
+    except Exception as e:
+        print("❌ Trading loop error:", e)
+        time.sleep(10)
