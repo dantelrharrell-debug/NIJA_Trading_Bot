@@ -1,3 +1,16 @@
+# main.py (top)
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+# load API keys next...
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+print("✅ API_KEY and API_SECRET loaded")
+
+# ------ Insert dependency check below ------
+# (Place the code block from below here)
+
 # DEBUG / dependency check — put this near the top of main.py
 import sys
 import pkgutil
