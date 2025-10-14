@@ -1,3 +1,8 @@
+import sys
+sys.path.append("./.venv/lib/python3.13/site-packages")
+
+import coinbase_advanced_py as cb
+
 #!/usr/bin/env python3
 import os
 import sys
