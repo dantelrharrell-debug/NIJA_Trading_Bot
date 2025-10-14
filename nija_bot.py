@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+import sys
+import os
+
+# Force Render to use the virtual environment packages
+sys.path.insert(0, os.path.join(os.getcwd(), ".venv/lib/python3.13/site-packages"))
+
+import coinbase_advanced_py as cb
+from flask import Flask, request, abort
+import json
+
+#!/usr/bin/env python3
 import os
 import json
 from flask import Flask, request, abort
