@@ -1,35 +1,35 @@
-#!/usr/bin/env python3
-import os
-import traceback
-from flask import Flask
+#!/usr/bin/env bash
+set -euo pipefail
 
-# -------------------
-# Determine mock mode
-# -------------------
-USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
+echo "🔹 DEBUG START.SH — start"
+echo "pwd: $(pwd)"
+echo "ls -la:"
+ls -la
 
-if not USE_MOCK:
-    try:
-        import coinbase_advanced_py as cb
-        print("✅ coinbase_advanced_py imported successfully.")
-        # Optional: initialize client if API keys present
-        API_KEY = os.getenv("API_KEY")
-        API_SECRET = os.getenv("API_SECRET")
-        if not API_KEY or not API_SECRET:
-            print("⚠️ API_KEY or API_SECRET not found in environment — switching to mock mode.")
-            USE_MOCK = True
-        else:
-            try:
-                client = cb.Client(API_KEY, API_SECRET)
-                print("🚀 Coinbase client initialized.")
-            except Exception as e:
-                print("❌ Failed to initialize Coinbase client:", e)
-                USE_MOCK = True
-    except Exception as e:
-        print("❌ coinbase_advanced_py not found or import failed:", e)
-        USE_MOCK = True
-else:
-    print("⚠️ Running in mock mode — Coinbase client not connected.")
+# Activate venv if it exists
+if [ -f .venv/bin/activate ]; then
+  echo "🔹 Activating .venv"
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+else
+  echo "❗ .venv not found at .venv/bin/activate"
+fi
 
-# Now the rest of your app can check USE_MOCK variable
-# e.g., if USE_MOCK: use_mock_client() else: use real client
+echo "Python executable: $(which python3 || true)"
+python3 --version || true
+
+# Show first 30 installed packages (mask long list)
+echo "pip list (head 30):"
+pip3 list --format=columns | head -n 30 || true
+
+# Print key env items (mask secrets)
+echo "ENV: USE_MOCK='${USE_MOCK-<not set>}'"
+echo "ENV: API_KEY='${API_KEY-<not set>}'"   # this will print literal value if set — remove if you don't want it visible
+if [ -n "${API_SECRET-}" ]; then
+  echo "ENV: API_SECRET is set (masked)"
+else
+  echo "ENV: API_SECRET not set"
+fi
+
+echo "🔹 Running nija_bot.py now..."
+exec python3 nija_bot.py
