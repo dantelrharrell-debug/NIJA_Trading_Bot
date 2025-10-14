@@ -1,4 +1,14 @@
 #!/bin/bash
+echo "🔹 Activating virtual environment..."
+source /opt/render/project/src/.venv/bin/activate
+
+# Confirm Python and module
+python3 -c "import sys; print('Python:', sys.executable); import coinbase_advanced_py; print('✅ coinbase_advanced_py loaded')"
+
+# Start the bot
+python3 nija_bot.py
+
+#!/bin/bash
 # start.sh
 
 echo "🔹 Activating virtual environment..."
