@@ -8,14 +8,14 @@ echo "Python executable: $(which python3)"
 
 # Check if coinbase_advanced_py is available
 python3 - <<'END'
+import os
+
 try:
     import coinbase_advanced_py
     print("✅ coinbase_advanced_py loaded")
-    import os
     os.environ["USE_MOCK"] = "False"
 except ImportError:
     print("❌ coinbase_advanced_py not found. Running in mock mode.")
-    import os
     os.environ["USE_MOCK"] = "True"
 END
 
