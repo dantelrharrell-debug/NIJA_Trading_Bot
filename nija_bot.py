@@ -30,7 +30,7 @@ def ensure(pkg_import_name, pip_name):
 cb = ensure("coinbase_advanced_py", "coinbase-advanced-py==1.8.2")
 
 # -----------------------
-# Debug info (prints to Render logs)
+# Debug info
 # -----------------------
 print("✅ Runtime env check")
 print("Python executable:", sys.executable)
@@ -69,10 +69,17 @@ def bot_loop():
 
     while True:
         try:
-            # Example safe call: fetch balances (no trading)
+            # Example safe call: fetch balances
             balances = client.get_account_balances()
-            print("Balances:", balances)
-            # TODO: Add your trading logic with proper safety checks here
+            print("💰 Balances snapshot:", balances)
+
+            # Example DRY_RUN trading logic
+            if LIVE_TRADING:
+                print("⚡ LIVE_TRADING enabled - implement trading logic here")
+                # TODO: add real trade calls, e.g. client.place_order(...)
+            else:
+                print("ℹ️ DRY_RUN mode - no trades placed")
+
             time.sleep(10)
         except Exception as e:
             print("❌ Error in bot loop:", type(e).__name__, str(e))
@@ -84,8 +91,7 @@ bot_thread.daemon = True
 bot_thread.start()
 
 # -----------------------
-# Run Flask to bind the port (Render needs a bound port)
+# Run Flask to bind the port (Render requires bound port)
 # -----------------------
 if __name__ == "__main__":
-    # important: host 0.0.0.0 so Render can route to it
     app.run(host="0.0.0.0", port=PORT)
