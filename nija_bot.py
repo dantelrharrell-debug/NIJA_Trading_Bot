@@ -1,63 +1,44 @@
 #!/usr/bin/env python3
-# nija_bot.py - Render-ready Nija Trading Bot (Web Service version)
-# Uses coinbase-advanced-py directly, no runtime installs.
+# nija_bot.py - Nija Trading Bot (Web Service + Live Trading Ready)
 
 import os
 import sys
 import time
 import json
 import traceback
-import threading
-import coinbase_advanced_py as cb
-from flask import Flask
+from coinbase_advanced_py import Client  # ✅ Fixed import
 
 # -----------------------
-# Environment variables
+# Environment Variables
 # -----------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 LIVE_TRADING = os.getenv("LIVE_TRADING", "False").lower() == "true"
-PORT = int(os.getenv("PORT", 10000))  # Render provides PORT
 
 if not API_KEY or not API_SECRET:
-    print("❌ API_KEY or API_SECRET not set. Add them in Render dashboard.")
-    sys.exit(1)
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
 
 # -----------------------
-# Initialize Coinbase client
+# Coinbase Client
 # -----------------------
-try:
-    client = cb.Client(API_KEY, API_SECRET)
-    print("✅ Coinbase client initialized")
-except Exception as e:
-    print("❌ Failed to create Coinbase client:", e)
-    sys.exit(1)
+client = Client(API_KEY, API_SECRET)
+print("🚀 Coinbase client initialized successfully")
 
 # -----------------------
-# Bot config
+# Bot Config
 # -----------------------
-TRADE_SYMBOLS = ["BTC", "ETH"]
 MIN_ALLOCATION = 0.02
 MAX_ALLOCATION = 0.10
-BASE_ALLOCATION = 0.05
+TRADE_SYMBOLS = ["BTC", "ETH"]
 SLEEP_SECONDS = 60
+BASE_COOLDOWN = 300
 TRADE_LOG = "trades.json"
 TRADE_HISTORY_COUNT = 5
-BASE_COOLDOWN = 300  # seconds
 
 last_trade_time = {symbol: 0 for symbol in TRADE_SYMBOLS}
 
 # -----------------------
-# Flask web server
-# -----------------------
-app = Flask(__name__)
-
-@app.route("/")
-def heartbeat():
-    return "Nija Trading Bot is alive! 🟢"
-
-# -----------------------
-# Helper functions
+# Helper Functions
 # -----------------------
 def print_balances():
     try:
@@ -98,8 +79,7 @@ def get_rsi(symbol, period=14):
             diff = closes[i] - closes[i-1]
             gains.append(max(diff, 0))
             losses.append(abs(min(diff, 0)))
-        avg_gain = sum(gains)/period
-        avg_loss = sum(losses)/period
+        avg_gain, avg_loss = sum(gains)/period, sum(losses)/period
         return 100 - (100 / (1 + avg_gain / (avg_loss or 1e-6)))
     except:
         return 50
@@ -148,7 +128,7 @@ def adjust_allocation(symbol, base_percent):
 def can_trade(symbol):
     return time.time() - last_trade_time[symbol] > BASE_COOLDOWN
 
-def place_trade(symbol, side, base_allocation=BASE_ALLOCATION):
+def place_trade(symbol, side, base_allocation=0.05):
     try:
         balances = print_balances()
         equity = get_account_equity(balances)
@@ -160,25 +140,23 @@ def place_trade(symbol, side, base_allocation=BASE_ALLOCATION):
             print(f"⏳ Cooldown active for {symbol}, skipping trade")
             return
 
+        print(f"⚡ Placing {side.upper()} for {symbol}: {amount} (~{allocation*100:.1f}% equity)")
         if LIVE_TRADING:
-            print(f"⚡ Placing {side.upper()} for {symbol}: {amount} (~{allocation*100:.1f}% equity)")
             order = client.place_order(symbol=symbol, side=side, type="market", amount=str(amount))
-            last_trade_time[symbol] = time.time()
-            with open(TRADE_LOG, "a") as f:
-                f.write(json.dumps({"symbol":symbol,"side":side,"amount":amount,"price":price,"timestamp":time.time()})+"\n")
-            print("✅ Trade executed and logged")
-        else:
-            print(f"⚡ [DRY RUN] {side.upper()} for {symbol}: {amount} (~{allocation*100:.1f}% equity)")
+        last_trade_time[symbol] = time.time()
 
+        with open(TRADE_LOG, "a") as f:
+            f.write(json.dumps({"symbol":symbol,"side":side,"amount":amount,"price":price,"timestamp":time.time()})+"\n")
+        print("✅ Trade executed and logged")
     except Exception as e:
         print("❌ Trade failed:", e)
         traceback.print_exc()
 
 # -----------------------
-# Bot loop
+# Main Loop
 # -----------------------
-def bot_loop():
-    print(f"🟢 Bot thread started - LIVE_TRADING: {LIVE_TRADING}")
+if __name__ == "__main__":
+    print("🌟 NIJA BOT Self-Optimizing Loop Starting")
     while True:
         try:
             balances = print_balances()
@@ -204,17 +182,3 @@ def bot_loop():
 
         print(f"⏳ Sleeping {SLEEP_SECONDS}s before next cycle\n")
         time.sleep(SLEEP_SECONDS)
-
-# -----------------------
-# Start bot in background thread
-# -----------------------
-bot_thread = threading.Thread(target=bot_loop)
-bot_thread.daemon = True
-bot_thread.start()
-
-# -----------------------
-# Run Flask web server
-# -----------------------
-if __name__ == "__main__":
-    print(f"🌟 Nija Trading Bot web server starting on port {PORT}")
-    app.run(host="0.0.0.0", port=PORT)
