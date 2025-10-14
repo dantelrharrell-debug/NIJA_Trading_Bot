@@ -1,16 +1,21 @@
+# Coinbase futures bot dependencies
 coinbase-advanced-py==1.8.2
-cryptography>=46.0.2
-PyJWT>=2.10.1
-requests>=2.31.0
-urllib3<3,>=1.26.0
+cryptography==46.0.2
+PyJWT==2.10.1
+requests>=2.31.0,<3
+urllib3>=1.26.0,<3
 backoff>=2.2.1
 cffi>=2.0.0
-charset_normalizer<4,>=2.1.0
-idna<4,>=3.4
-websockets<14,>=12.0
+charset_normalizer>=2.1.0,<4
+idna>=3.4,<4
+websockets>=12.0,<14
 certifi>=2025.10.5
 python-dotenv==1.1.1
+
+# Web server & deployment
 gunicorn>=20.0.0
 flask==3.1.2
+
+# Data & numerical packages
 numpy==1.26.4
 pandas==2.3.3
