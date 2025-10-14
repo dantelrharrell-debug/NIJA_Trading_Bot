@@ -1,49 +1,37 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-# Activate virtualenv
-source .venv/bin/activate
-
-# Install dependencies (safe)
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Run the bot
-python3 nija_bot.py
-
-#!/usr/bin/env bash
-set -eo pipefail
-
 # ------------------------------
-# start.sh for Render deploy
+# start.sh - Render deploy starter
 # ------------------------------
 
 VENV=".venv"
 PY="$VENV/bin/python3"
 
-# 1️⃣ Create virtual environment if it doesn't exist
+# 1️⃣ Create virtual environment if missing
 if [ ! -d "$VENV" ]; then
-    echo "🛠️ Creating virtual environment..."
+    echo "🟢 Creating virtual environment..."
     python3 -m venv "$VENV"
 fi
 
 # 2️⃣ Activate virtual environment
-echo "⚡ Activating virtual environment..."
 source "$VENV/bin/activate"
 
 # 3️⃣ Upgrade pip
-echo "📦 Upgrading pip..."
+echo "🔄 Upgrading pip..."
 pip install --upgrade pip
 
 # 4️⃣ Install dependencies
-if [ -f requirements.txt ]; then
-    echo "📥 Installing dependencies from requirements.txt..."
-    pip install -r requirements.txt
-else
-    echo "❌ requirements.txt not found!"
-    exit 1
+echo "📦 Installing requirements..."
+pip install -r requirements.txt
+
+# 5️⃣ Ensure coinbase-advanced-py is importable
+echo "🔍 Checking Coinbase library..."
+if ! "$PY" -c "import coinbase_advanced_py" &> /dev/null; then
+    echo "⚠️ coinbase_advanced_py not found, installing..."
+    pip install --no-cache-dir coinbase-advanced-py==1.8.2
 fi
 
-# 5️⃣ Run nija_bot.py
-echo "🚀 Starting Nija Trading Bot..."
+# 6️⃣ Run the bot
+echo "🚀 Starting nija_bot.py..."
 exec "$PY" nija_bot.py
