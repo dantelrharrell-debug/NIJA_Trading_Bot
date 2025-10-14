@@ -1,3 +1,24 @@
+import pkgutil, subprocess, sys, traceback
+try:
+    out = subprocess.check_output([sys.executable, "-m", "pip", "freeze"], text=True, stderr=subprocess.STDOUT)
+except Exception as e:
+    out = f"pip freeze failed: {e}"
+print("---- pip freeze (top 200) ----")
+print(out)
+print("---- pkgutil.iter_modules (first 200) ----")
+print([m.name for m in pkgutil.iter_modules()][:200])
+try:
+    import importlib
+    for name in ("coinbase_advanced_py","coinbase_advanced","coinbase"):
+        try:
+            mod = importlib.import_module(name)
+            print("Imported", name, "->", mod)
+        except Exception:
+            print("Failed to import", name)
+            traceback.print_exc()
+except Exception:
+    print("debug import check failed")
+
 #!/usr/bin/env python3
 """
 nija_bot.py - NIJA Trading Bot (single-file, Render-ready)
