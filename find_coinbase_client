@@ -1,0 +1,58 @@
+# ---------- Coinbase import detection (improved) ----------
+def find_coinbase_client():
+    """
+    Try candidate module names and return (ClientClass, import_path) or (None, None).
+    Honor COINBASE_MODULE env var to force an import name.
+    """
+    override = os.getenv("COINBASE_MODULE")
+    if override:
+        candidates = [(override, ["Client", "client.Client"])]
+    else:
+        candidates = [
+            ("coinbase_advanced_py", ["Client", "client.Client"]),
+            ("coinbase_advanced", ["Client", "client.Client"]),
+            ("coinbase", ["Client", "client.Client"]),
+            # add more if needed
+        ]
+
+    for root, attrs in candidates:
+        try:
+            mod = importlib.import_module(root)
+        except ModuleNotFoundError:
+            print(f"❌ import failed: module not found: {root}")
+            continue
+        except Exception as e:
+            # print full traceback so Render logs show the real reason (dependency error, etc)
+            print(f"⚠️ import {root} raised an exception: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            continue
+
+        # Try attribute variations
+        for attr_path in attrs:
+            parts = attr_path.split(".")
+            cur = mod
+            ok = True
+            for p in parts:
+                if not hasattr(cur, p):
+                    ok = False
+                    break
+                cur = getattr(cur, p)
+            if ok:
+                print(f"✅ Found Coinbase client: {root}.{attr_path}")
+                return cur, f"{root}.{attr_path}"
+
+        # last attempt: submodule client
+        try:
+            sub = importlib.import_module(f"{root}.client")
+            if hasattr(sub, "Client"):
+                print(f"✅ Found Coinbase client: {root}.client.Client")
+                return getattr(sub, "Client"), f"{root}.client.Client"
+        except ModuleNotFoundError:
+            # expected if submodule doesn't exist
+            pass
+        except Exception as e:
+            print(f"⚠️ import {root}.client raised {type(e).__name__}: {e}")
+            traceback.print_exc()
+            pass
+
+    return None, None
