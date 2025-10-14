@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+import os
+import sys
+import time
+import threading
+import traceback
+import importlib
+import pkgutil
+from typing import Any, Callable, Optional
+
+from flask import Flask
+
 # ------------------ Extended Coinbase + Trading helpers ------------------
 # (drop this into your existing nija_bot.py replacing the previous import-detection
 #  / client init and helper sections)
