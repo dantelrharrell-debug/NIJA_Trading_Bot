@@ -1,4 +1,10 @@
 #!/bin/bash
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+. .venv/bin/activate
+python3 nija_bot.py
+
+#!/bin/bash
 # ------------------------------
 # start.sh for Render deploy
 # ------------------------------
