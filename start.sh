@@ -1,22 +1,41 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "🔄 Starting NIJA BOT..."
+# start.sh - Render start script
+# This script:
+#  - ensures a .venv exists
+#  - activates the venv
+#  - upgrades pip and installs requirements
+#  - runs nija_bot.py (exec so container PID 1 is Python process)
 
-# Create virtual environment if missing
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
+VENV_DIR=".venv"
+PYTHON_BIN="${VENV_DIR}/bin/python3"
+PIP_BIN="${VENV_DIR}/bin/pip"
+
+echo "==> Start script executing"
+
+if [ ! -d "${VENV_DIR}" ]; then
+  echo "==> Creating virtualenv in ${VENV_DIR}"
+  python3 -m venv "${VENV_DIR}"
 fi
 
-# Activate venv
-source .venv/bin/activate
+# Activate virtualenv
+# shellcheck source=/dev/null
+. "${VENV_DIR}/bin/activate"
+
 echo "✅ Virtual environment activated."
 
-# Upgrade pip
-python3 -m pip install --upgrade pip
+echo "==> Upgrading pip"
+"${PYTHON_BIN}" -m pip install --upgrade pip setuptools wheel
 
-# Install all requirements
-pip install --no-cache-dir -r requirements.txt
+if [ -f requirements.txt ]; then
+  echo "==> Installing requirements from requirements.txt"
+  # Use --no-cache-dir to reduce disk use on free tiers
+  "${PIP_BIN}" install --no-cache-dir -r requirements.txt
+else
+  echo "⚠️ requirements.txt not found - skipping pip install"
+fi
 
-# Run the bot
-echo "🚀 Running nija_bot.py..."
-python3 nija_bot.py
+echo "==> Running nija_bot.py"
+# Exec so python becomes PID1 (Render expects your process to run in foreground)
+exec "${PYTHON_BIN}" nija_bot.py
