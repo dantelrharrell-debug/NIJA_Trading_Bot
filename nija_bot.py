@@ -21,6 +21,40 @@ from typing import Dict, Any
 
 from flask import Flask, request, jsonify
 
+#!/usr/bin/env python3
+import os
+import sys
+import traceback
+from flask import Flask
+
+# -------------------
+# Determine mock mode (interpret env strictly)
+# Treat absence of USE_MOCK as False (live) unless set to true/1/yes
+# -------------------
+_raw = os.getenv("USE_MOCK", "")
+USE_MOCK = _raw.strip().lower() in ("1", "true", "yes")
+
+if USE_MOCK:
+    print("⚠️ Running in mock mode — Coinbase client not connected.")
+else:
+    try:
+        import coinbase_advanced_py as cb
+        print("✅ coinbase_advanced_py imported successfully.")
+
+        API_KEY = os.getenv("API_KEY")
+        API_SECRET = os.getenv("API_SECRET")
+
+        if not API_KEY or not API_SECRET:
+            raise ValueError("❌ Missing API_KEY or API_SECRET in environment")
+
+        client = cb.Client(API_KEY, API_SECRET)
+        print("🚀 Live Coinbase client connected.")
+
+    except Exception as e:
+        print("❌ Failed to connect live Coinbase client:")
+        traceback.print_exc()
+        USE_MOCK = True  # fallback to mock mode
+
 # -------------------
 # Logging helper
 # -------------------
