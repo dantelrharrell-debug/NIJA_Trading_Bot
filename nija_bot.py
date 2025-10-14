@@ -1,3 +1,9 @@
+import sys
+import os
+print("Python executable:", sys.executable)
+print("Python path:", sys.path)
+print("Current working dir:", os.getcwd())
+
 #!/usr/bin/env python3
 import sys
 print("Python executable:", sys.executable)
