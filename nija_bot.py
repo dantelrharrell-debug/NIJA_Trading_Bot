@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import sys
 import traceback
 from flask import Flask
 
@@ -13,14 +12,16 @@ if not USE_MOCK:
     try:
         import coinbase_advanced_py as cb
         print("✅ coinbase_advanced_py imported successfully.")
-        # Load API keys
+
+        # Load API keys from Render environment variables
         API_KEY = os.getenv("API_KEY")
         API_SECRET = os.getenv("API_SECRET")
         if not API_KEY or not API_SECRET:
             raise ValueError("❌ Missing Coinbase API_KEY or API_SECRET")
+
         client = cb.Client(API_KEY, API_SECRET)
         print("🚀 Coinbase client ready")
-    except Exception as e:
+    except Exception:
         print("❌ Failed to load Coinbase client, switching to mock mode.")
         traceback.print_exc()
         USE_MOCK = True
@@ -32,7 +33,7 @@ if USE_MOCK:
 # -------------------
 # Live trading flag
 # -------------------
-LIVE_TRADING = True if not USE_MOCK else False
+LIVE_TRADING = not USE_MOCK
 print(f"🟢 NIJA BOT starting; LIVE_TRADING = {LIVE_TRADING}")
 
 # -------------------
