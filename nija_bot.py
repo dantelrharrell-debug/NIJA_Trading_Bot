@@ -1,3 +1,48 @@
+#!/usr/bin/env python3
+import sys
+import os
+import subprocess
+
+# ----------------- ensure venv packages are visible -----------------
+sys.path.append("./.venv/lib/python3.13/site-packages")
+
+# ----------------- helper to debug installed packages -----------------
+def debug_installed_packages(limit=20):
+    """Returns top 'limit' installed packages for debugging"""
+    try:
+        import pkg_resources
+        installed = sorted([(d.project_name, d.version) for d in pkg_resources.working_set])
+        return [f"{name}=={version}" for name, version in installed[:limit]]
+    except Exception as e:
+        return [f"Error listing packages: {e}"]
+
+# ----------------- try to import Coinbase client -----------------
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    print("❌ import failed: module not found: coinbase_advanced_py")
+    print("Installed packages (top 20):")
+    for line in debug_installed_packages(20):
+        print("   ", line)
+    cb = None  # allow script to continue safely
+
+# ----------------- Example: check if client works -----------------
+if cb:
+    API_KEY = os.getenv("API_KEY")
+    API_SECRET = os.getenv("API_SECRET")
+
+    if not API_KEY or not API_SECRET:
+        raise SystemExit("❌ API_KEY or API_SECRET not set")
+
+    client = cb.Client(API_KEY, API_SECRET)
+    print("✅ Coinbase client initialized")
+    # Example: list balances
+    try:
+        balances = client.get_account_balances()
+        print("Balances:", balances)
+    except Exception as e:
+        print("Error fetching balances:", e)
+
 import sys
 sys.path.append("./.venv/lib/python3.13/site-packages")
 
