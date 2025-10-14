@@ -1,27 +1,34 @@
-#!/usr/bin/env bash
-set -eo pipefail
+#!/usr/bin/env python3
+import subprocess
+import sys
 
-VENV=".venv"
-PY="$VENV/bin/python3"
+# ---------- Ensure coinbase_advanced_py is installed ----------
+try:
+    from coinbase_advanced_py import Client
+except ModuleNotFoundError:
+    print("⚠️ coinbase_advanced_py not found, installing...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", "coinbase-advanced-py==1.8.2"])
+    print("✅ coinbase_advanced_py installed, retrying import...")
+    from coinbase_advanced_py import Client
 
-# Create virtual environment if missing
-if [ ! -d "$VENV" ]; then
-    echo "🟢 Creating virtual environment..."
-    python3 -m venv "$VENV"
-fi
+# ---------- Load environment variables ----------
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-# Upgrade pip in venv
-echo "🔄 Upgrading pip..."
-"$PY" -m pip install --upgrade pip
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
 
-# Install dependencies in venv
-echo "📦 Installing requirements..."
-"$PY" -m pip install -r requirements.txt
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ Missing Coinbase API_KEY or API_SECRET")
 
-# Install Coinbase package explicitly in venv
-echo "🔍 Ensuring coinbase-advanced-py is installed..."
-"$PY" -m pip install --no-cache-dir coinbase-advanced-py==1.8.2
+# ---------- Initialize Coinbase client ----------
+client = Client(API_KEY, API_SECRET)
+print("🚀 Coinbase client initialized!")
 
-# ✅ Run your bot using venv python
-echo "🚀 Starting nija_bot.py..."
-exec "$PY" nija_bot.py
+# ---------- Example: check balances ----------
+try:
+    balances = client.get_account_balances()
+    print("💰 Balances:", balances)
+except Exception as e:
+    print("⚠️ Error fetching balances:", e)
