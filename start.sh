@@ -1,4 +1,8 @@
 #!/bin/bash
+source .venv/bin/activate
+python3 nija_bot.py
+
+#!/bin/bash
 
 # 1️⃣ Activate the virtual environment
 source .venv/bin/activate
