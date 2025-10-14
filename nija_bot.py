@@ -1,4 +1,7 @@
 import sys
+sys.path.append("/opt/render/project/src/.venv/lib/python3.13/site-packages")
+import coinbase_advanced_py as cb
+import sys
 import os
 print("Python executable:", sys.executable)
 print("Python path:", sys.path)
