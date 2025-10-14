@@ -1,3 +1,12 @@
+#!/bin/bash
+# start.sh
+
+echo "==> Activating virtual environment"
+source .venv/bin/activate
+
+echo "==> Running bot"
+python3 nija_bot.py
+
 #!/usr/bin/env bash
 set -euo pipefail
 
