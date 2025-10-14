@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# start.sh - start script for Render
+set -e
+# Activate virtualenv if available
+if [ -f ".venv/bin/activate" ]; then
+  . .venv/bin/activate
+fi
+# Run the bot
+python3 nija_bot.py
+#!/usr/bin/env bash
 set -e
 . .venv/bin/activate
 python3 nija_bot.py
