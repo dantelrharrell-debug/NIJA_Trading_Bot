@@ -1,43 +1,25 @@
-import sys
-print("Python executable:", sys.executable)
-print("sys.path:", sys.path)
-
 #!/bin/bash
+# -------------------------------
+# start.sh for Nija Bot on Render
+# -------------------------------
 
-# ---------- START.RS: Safe Nija Bot Launcher for Render ----------
-
-# Exit on any errors
+# Exit immediately if a command fails
 set -e
 
-# Create virtual environment if it doesn't exist
-if [ ! -d ".venv" ]; then
-    echo "🛠 Creating virtual environment..."
-    python3 -m venv .venv
+# Activate the virtual environment
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+else
+    echo "❌ Virtual environment not found! Aborting."
+    exit 1
 fi
 
-# Activate the virtual environment
-echo "⚡ Activating virtual environment..."
-source .venv/bin/activate
-
-# Upgrade pip
-echo "⬆️ Upgrading pip..."
+# Optional: upgrade pip (safe to keep)
 pip install --upgrade pip
 
-# Install required packages from requirements.txt
-echo "📦 Installing dependencies..."
-pip install -r requirements.txt
+# Optional: force reinstall Coinbase package to avoid ModuleNotFoundError
+pip install --no-cache-dir coinbase-advanced-py==1.8.2
 
-# Confirm coinbase_advanced_py is installed
-python3 - <<'EOF'
-import sys
-import importlib.util
-spec = importlib.util.find_spec("coinbase_advanced_py")
-if spec is None:
-    print("❌ coinbase_advanced_py NOT found!")
-else:
-    print("✅ coinbase_advanced_py found!")
-EOF
-
-# Start the bot
+# Launch the bot
 echo "🚀 Launching Nija bot..."
-exec python3 nija_bot.py
+python nija_bot.py
