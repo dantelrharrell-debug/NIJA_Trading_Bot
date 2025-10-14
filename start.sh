@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Activate virtualenv
+source .venv/bin/activate
+
+# Install dependencies (safe)
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Run the bot
+python3 nija_bot.py
+
+#!/usr/bin/env bash
+set -eo pipefail
+
 # ------------------------------
 # start.sh for Render deploy
 # ------------------------------
