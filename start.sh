@@ -1,17 +1,25 @@
 #!/bin/bash
-# start.sh for Nija Bot on Render
+# -------------------------------
+# start.sh for Nija bot on Render
+# -------------------------------
 
-set -e
-
-# Use the venv Python directly
-VENV_PY="./.venv/bin/python"
-
-# Ensure the venv Python exists
-if [ ! -f "$VENV_PY" ]; then
-    echo "❌ Virtualenv Python not found!"
-    exit 1
+# 1️⃣ Activate virtual environment
+if [ -f .venv/bin/activate ]; then
+    echo "Activating virtual environment..."
+    source .venv/bin/activate
+else
+    echo "❌ Virtual environment not found, creating one..."
+    python3 -m venv .venv
+    source .venv/bin/activate
 fi
 
-# Run the bot using the venv Python
+# 2️⃣ Upgrade pip inside venv
+python -m pip install --upgrade pip
+
+# 3️⃣ Reinstall dependencies to ensure venv has them
+echo "Installing required packages..."
+python -m pip install --no-cache-dir -r requirements.txt
+
+# 4️⃣ Launch Nija bot
 echo "🚀 Launching Nija bot..."
-$VENV_PY nija_bot.py
+python nija_bot.py
