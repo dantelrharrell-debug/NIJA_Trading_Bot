@@ -1,44 +1,29 @@
-import sys
-sys.path.append("/opt/render/project/src/.venv/lib/python3.13/site-packages")
-import coinbase_advanced_py as cb
-import sys
-import os
-print("Python executable:", sys.executable)
-print("Python path:", sys.path)
-print("Current working dir:", os.getcwd())
-
-#!/usr/bin/env python3
-import sys
-print("Python executable:", sys.executable)
-print("Python path:", sys.path)
-
 #!/usr/bin/env python3
 import os
 import json
 from datetime import datetime
 from flask import Flask, request, jsonify
-import coinbase_advanced_py as cb
+
+# Coinbase client
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    cb = None
+    print("❌ coinbase_advanced_py not found. Running in mock mode.")
 
 # ------------------ BOT SETTINGS ------------------
-TICKERS = ["BTC", "ETH", "SOL", "ADA"]  # add all your tickers
+TICKERS = ["BTC", "ETH", "SOL", "ADA"]  # add your tickers
 LIVE_TRADING = True
 
-RISK = {
-    "min_pct": 0.02,
-    "max_pct": 0.10
-}
-
-STATE = {
-    "trade_history": []
-}
-# ---------------------------------------------------
+RISK = {"min_pct": 0.02, "max_pct": 0.10}
+STATE = {"trade_history": []}
 
 # ---------- Coinbase client ----------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
-if not API_KEY or not API_SECRET:
-    print("⚠️ API_KEY or API_SECRET not set, running in mock mode")
+if not API_KEY or not API_SECRET or cb is None:
+    print("⚠️ Running in mock mode — Coinbase client not connected.")
     client = None
 else:
     client = cb.Client(API_KEY, API_SECRET)
@@ -60,12 +45,12 @@ def ai_trade_decision(ticker, price, indicators):
         return "hold"
 
 # ---------- Position Sizing ----------
-def calculate_position_size(ticker, account_balance=None):
-    account_balance = account_balance or 1000
+def calculate_position_size(ticker, account_balance=1000):
     pct = RISK["min_pct"]
     size = account_balance * pct
-    if size > account_balance * RISK["max_pct"]:
-        size = account_balance * RISK["max_pct"]
+    max_size = account_balance * RISK["max_pct"]
+    if size > max_size:
+        size = max_size
     return round(size, 6)
 
 # ---------- Trade Handler ----------
@@ -121,6 +106,4 @@ def home():
 # ---------- Start Bot ----------
 if __name__ == "__main__":
     print("🟢 NIJA BOT starting; LIVE_TRADING =", LIVE_TRADING)
-    if not client:
-        print("⚠️ Running in mock mode — real Coinbase client not connected.")
     app.run(host="0.0.0.0", port=10000)
