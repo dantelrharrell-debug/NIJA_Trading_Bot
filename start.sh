@@ -1,33 +1,17 @@
 #!/bin/bash
+# start.sh
 
-# ---------- Activate virtual environment ----------
-if [ -d ".venv" ]; then
-    echo "🔹 Activating virtual environment..."
-    source .venv/bin/activate
-else
-    echo "⚠️ Virtual environment not found, creating..."
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install --upgrade pip
-    pip install -r requirements.txt
-fi
+echo "🔹 Activating virtual environment..."
+export VIRTUAL_ENV="/opt/render/project/src/.venv"
+export PATH="$VIRTUAL_ENV/bin:$PATH"
+source "$VIRTUAL_ENV/bin/activate"
 
-# ---------- Check that coinbase_advanced_py is installed ----------
-python3 - <<END
-import sys
-import site
+echo "Python executable: $(which python3)"
+echo "Python version: $(python3 --version)"
+echo "Site-packages directory: $(python3 -c 'import site; print(site.getsitepackages())')"
 
-print("Python executable:", sys.executable)
-print("Python sys.path:", sys.path)
-print("Site-packages directories:", site.getsitepackages())
+# Double-check coinbase-advanced-py is installed
+python3 -m pip show coinbase-advanced-py || pip install -r requirements.txt
 
-try:
-    import coinbase_advanced_py as cb
-    print("✅ coinbase_advanced_py found")
-except ModuleNotFoundError:
-    print("❌ coinbase_advanced_py NOT found")
-END
-
-# ---------- Start your bot ----------
-echo "🚀 Launching Nija bot..."
+# Launch bot
 python3 nija_bot.py
