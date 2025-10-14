@@ -1,4 +1,8 @@
 #!/bin/bash
+source .venv/bin/activate  # activate virtualenv
+python3 nija_bot.py        # run your bot
+
+#!/bin/bash
 # Activate virtual environment
 source .venv/bin/activate
 echo "✅ Virtual environment activated."
