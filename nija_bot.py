@@ -1,3 +1,22 @@
+# Ensure dependency is available at runtime (self-heal)
+import importlib, sys, subprocess
+
+package_name = "coinbase_advanced_py"           # import name
+pip_name = "coinbase-advanced-py==1.8.2"        # pip distribution name/version
+
+try:
+    importlib.import_module(package_name)
+except ModuleNotFoundError:
+    print(f"⚠️ {package_name} not found — attempting runtime install via pip...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", pip_name])
+        print("✅ Runtime pip install succeeded.")
+    except Exception as e:
+        print("❌ Runtime pip install failed:", e)
+        raise
+# Now safe to import
+globals()[package_name] = importlib.import_module(package_name)
+
 #!/usr/bin/env python3
 # nija_bot.py - Nija Trading Bot for Render
 
