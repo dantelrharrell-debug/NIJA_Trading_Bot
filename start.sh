@@ -1,24 +1,27 @@
 #!/bin/bash
 
-# 1️⃣ Activate the virtual environment
+# Activate virtual environment
 source "$PWD/.venv/bin/activate"
 
-# 2️⃣ Upgrade pip (safe, idempotent)
+# Upgrade pip safely
 python3 -m pip install --upgrade pip
 
-# 3️⃣ Install all dependencies
+# Install dependencies
 python3 -m pip install -r requirements.txt
 
-# 4️⃣ Run the bot with debug info
-echo "🚀 Starting Nija bot..."
+echo "🚀 Starting Nija bot with auto-restart..."
 
-python3 - <<'PYTHON'
+# Infinite loop to keep the bot running
+while true; do
+    echo "🔁 Launching bot..."
+    
+    python3 - <<'PYTHON'
 import os
 import sys
 import coinbase_advanced_py as cb
 from dotenv import load_dotenv
 
-# Print debug info
+# Debug info
 print("Python executable:", sys.executable)
 print("Python path:", sys.path)
 print("Current working dir:", os.getcwd())
@@ -39,6 +42,10 @@ print("✅ Coinbase client initialized")
 balances = client.get_account_balances()
 print("💰 Balances:", balances)
 
-# Run main bot logic
+# Run main bot
 import nija_bot
 PYTHON
+
+    echo "⚠️ Bot exited unexpectedly, restarting in 5 seconds..."
+    sleep 5
+done
