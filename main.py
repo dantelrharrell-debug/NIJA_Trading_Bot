@@ -63,3 +63,15 @@ try:
     print("⚠️  coinbase_advanced_py unexpectedly present")
 except ModuleNotFoundError:
     print("ℹ️  coinbase_advanced_py not present (expected)")
+
+import time
+
+print("🚀 Bot started")
+
+while True:
+    try:
+        # Your trading logic here
+        time.sleep(1)  # sleep prevents 100% CPU usage
+    except Exception as e:
+        print("❌ Error:", e)
+        time.sleep(5)
