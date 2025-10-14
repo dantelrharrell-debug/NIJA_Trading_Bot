@@ -1,3 +1,7 @@
+import sys
+print("Python executable:", sys.executable)
+print("sys.path:", sys.path)
+
 #!/bin/bash
 
 # ---------- START.RS: Safe Nija Bot Launcher for Render ----------
