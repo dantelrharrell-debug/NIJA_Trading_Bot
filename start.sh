@@ -19,6 +19,26 @@ pip install -r requirements.txt
 python3 main.py
 
 #!/bin/bash
+# ------------------------------
+# start.sh for Render deploy
+# ------------------------------
+
+# 1️⃣ Activate virtual environment (create if missing)
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+fi
+source .venv/bin/activate
+
+# 2️⃣ Upgrade pip
+pip install --upgrade pip
+
+# 3️⃣ Install dependencies
+pip install -r requirements.txt
+
+# 4️⃣ Run main.py
+python3 main.py
+
+#!/bin/bash
 # Activate virtual environment
 source .venv/bin/activate
 
