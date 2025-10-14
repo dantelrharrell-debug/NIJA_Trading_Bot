@@ -1,34 +1,31 @@
-#!/usr/bin/env python3
-import subprocess
-import sys
+#!/bin/bash
+# ========================
+# START SCRIPT - NIJA BOT
+# ========================
 
-# ---------- Ensure coinbase_advanced_py is installed ----------
-try:
-    from coinbase_advanced_py import Client
-except ModuleNotFoundError:
-    print("⚠️ coinbase_advanced_py not found, installing...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", "coinbase-advanced-py==1.8.2"])
-    print("✅ coinbase_advanced_py installed, retrying import...")
-    from coinbase_advanced_py import Client
+echo "🔄 Starting NIJA BOT..."
 
-# ---------- Load environment variables ----------
-import os
-from dotenv import load_dotenv
-load_dotenv()
+# Activate virtual environment if it exists
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    echo "✅ Virtual environment activated."
+else
+    echo "⚠️ No virtual environment found. Creating one..."
+    python3 -m venv .venv
+    source .venv/bin/activate
+fi
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+# Upgrade pip
+python3 -m pip install --upgrade pip
 
-if not API_KEY or not API_SECRET:
-    raise SystemExit("❌ Missing Coinbase API_KEY or API_SECRET")
+# Install requirements
+if [ -f "requirements.txt" ]; then
+    pip install --no-cache-dir -r requirements.txt
+else
+    echo "⚠️ requirements.txt not found. Installing essential packages..."
+    pip install --no-cache-dir coinbase-advanced-py==1.8.2 python-dotenv flask gunicorn pandas numpy
+fi
 
-# ---------- Initialize Coinbase client ----------
-client = Client(API_KEY, API_SECRET)
-print("🚀 Coinbase client initialized!")
-
-# ---------- Example: check balances ----------
-try:
-    balances = client.get_account_balances()
-    print("💰 Balances:", balances)
-except Exception as e:
-    print("⚠️ Error fetching balances:", e)
+# Run the bot
+echo "🚀 Running nija_bot.py..."
+python3 nija_bot.py
