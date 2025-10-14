@@ -1,77 +1,83 @@
 #!/usr/bin/env python3
+# nija_bot.py - Nija Trading Bot for Render
+
 import sys
 import os
+import threading
+import time
+from flask import Flask
 
-# Force Render to use the virtual environment packages
-sys.path.insert(0, os.path.join(os.getcwd(), ".venv/lib/python3.13/site-packages"))
+# -----------------------
+# Debug: Python & Environment
+# -----------------------
+print("✅ Virtual environment activated")
+print("Python executable:", sys.executable)
+print("sys.path:", sys.path)
 
-import coinbase_advanced_py as cb
-from flask import Flask, request, abort
-import json
+# -----------------------
+# Debug: Test coinbase_advanced_py import
+# -----------------------
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py imported successfully!")
+except ModuleNotFoundError:
+    print("❌ coinbase_advanced_py NOT found. Check venv and requirements.txt")
+    sys.exit(1)
 
-#!/usr/bin/env python3
-import os
-import json
-from flask import Flask, request, abort
-import coinbase_advanced_py as cb
+# -----------------------
+# Debug: Test API keys
+# -----------------------
+api_key = os.getenv("API_KEY")
+api_secret = os.getenv("API_SECRET")
 
-# --- Load environment ---
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+if api_key and api_secret:
+    print("✅ API_KEY and API_SECRET detected")
+else:
+    print("❌ API_KEY or API_SECRET missing. Add them in Render environment variables")
+    sys.exit(1)
 
-if not API_KEY or not API_SECRET or not WEBHOOK_SECRET:
-    raise SystemExit("❌ API_KEY, API_SECRET, or WEBHOOK_SECRET not set!")
-
-# --- Initialize Coinbase Advanced Client ---
-client = cb.Client(API_KEY, API_SECRET)
-
-# --- Flask Web Server ---
+# -----------------------
+# Flask setup
+# -----------------------
 app = Flask(__name__)
+PORT = int(os.environ.get("PORT", 10000))  # Render injects PORT
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    # Verify webhook secret
-    secret = request.headers.get("X-Webhook-Secret")
-    if secret != WEBHOOK_SECRET:
-        abort(403)
+@app.route("/")
+def heartbeat():
+    return "Nija Trading Bot is alive! 🟢"
 
-    data = request.json
-    print("📩 Webhook received:", data)
+# -----------------------
+# Trading Bot Loop
+# -----------------------
+def bot_loop():
+    live_trading = os.getenv("LIVE_TRADING", "False") == "True"
 
-    try:
-        symbol = data["symbol"]
-        action = data["action"]
-        amount = float(data["amount"])
-        leverage = int(data.get("leverage", 1))
-        take_profit = data.get("take_profit")
-        stop_loss = data.get("stop_loss")
+    client = cb.Client(api_key, api_secret)
+    print(f"🟢 Bot thread started - LIVE_TRADING: {live_trading}")
 
-        # --- Open position ---
-        order = client.create_futures_order(
-            symbol=symbol,
-            side=action.lower(),
-            type="market",
-            size=amount,
-            leverage=leverage
-        )
-        print("✅ Position opened:", order)
+    while True:
+        try:
+            # Example: fetch balances
+            balances = client.get_account_balances()
+            print("Balances:", balances)
 
-        # --- Optional: TP/SL ---
-        if take_profit or stop_loss:
-            tp_sl_order = client.create_futures_tp_sl_order(
-                symbol=symbol,
-                size=amount,
-                take_profit=take_profit,
-                stop_loss=stop_loss
-            )
-            print("🎯 TP/SL set:", tp_sl_order)
+            # TODO: Add your trading logic here
+            # Example: check price, place orders, etc.
 
-        return {"status": "success", "order": order}, 200
+            time.sleep(10)  # run loop every 10 seconds
+        except Exception as e:
+            print("❌ Error in bot loop:", e)
+            time.sleep(5)  # wait before retry
 
-    except Exception as e:
-        print("❌ Error executing trade:", e)
-        return {"status": "error", "message": str(e)}, 500
+# -----------------------
+# Start bot in background thread
+# -----------------------
+bot_thread = threading.Thread(target=bot_loop)
+bot_thread.daemon = True
+bot_thread.start()
 
+# -----------------------
+# Start Flask web service
+# -----------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=PORT)
