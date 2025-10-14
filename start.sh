@@ -1,26 +1,17 @@
 #!/bin/bash
-# -------------------------------
 # start.sh for Nija Bot on Render
-# -------------------------------
 
-# Exit on any error
 set -e
 
-# Absolute path to virtualenv Python
-VENV_PYTHON="./.venv/bin/python"
+# Use the venv Python directly
+VENV_PY="./.venv/bin/python"
 
-# Check venv Python exists
-if [ ! -f "$VENV_PYTHON" ]; then
-    echo "❌ Virtual environment Python not found at $VENV_PYTHON"
+# Ensure the venv Python exists
+if [ ! -f "$VENV_PY" ]; then
+    echo "❌ Virtualenv Python not found!"
     exit 1
 fi
 
-# Optional: upgrade pip in venv
-$VENV_PYTHON -m pip install --upgrade pip
-
-# Ensure Coinbase package is installed in venv
-$VENV_PYTHON -m pip install --no-cache-dir coinbase-advanced-py==1.8.2
-
-# Run your bot using venv Python directly
+# Run the bot using the venv Python
 echo "🚀 Launching Nija bot..."
-$VENV_PYTHON nija_bot.py
+$VENV_PY nija_bot.py
