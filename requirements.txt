@@ -19,3 +19,19 @@ flask==3.1.2
 # Data & numerical packages
 numpy==1.26.4
 pandas==2.3.3
+
+coinbase-advanced-py==1.8.2
+cryptography>=42.0.4
+PyJWT>=2.8.0
+requests>=2.31.0
+urllib3>=1.21.1,<3
+backoff>=2.2.1
+cffi>=2.0.0
+charset_normalizer>=2.0.0,<4
+idna>=2.5,<4
+websockets>=12.0,<14.0
+certifi>=2017.4.17
+python-dotenv==1.1.1
+flask>=3.0.0
+gunicorn>=20.0.0
+pandas==2.3.3    # only if you need pandas; remove if not required
