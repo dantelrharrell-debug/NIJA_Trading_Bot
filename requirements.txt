@@ -1,35 +1,21 @@
+# Core bot dependencies
 coinbase-advanced-py==1.8.2
-python-dotenv==1.1.1
-flask==3.1.2
-gunicorn>=20.0.0
-pandas==2.3.3
-numpy==1.26.4
-requests>=2.31.0
-cryptography==46.0.2
-
-# Coinbase futures bot dependencies
-coinbase-advanced-py==1.8.2
-cryptography==46.0.2
 PyJWT==2.10.1
-
-# Networking / HTTP
+cryptography==46.0.2
+python-dotenv==1.1.1
 requests>=2.31.0,<3
 urllib3>=1.26.0,<3
 certifi>=2017.4.17
 charset_normalizer>=2.1.0,<4
 idna>=3.4,<4
-
-# Coinbase client helpers
 backoff>=2.2.1
 websockets>=12.0,<14.0
 cffi>=2.0.0
-python-dotenv==1.1.1
 
 # Web server for Render
 flask==3.1.2
 gunicorn>=20.0.0
 
-# Optional heavy numeric/data packages (remove if not required)
-# numpy and pandas significantly increase build time and image size.
+# Optional numeric/data packages
 numpy==1.26.4
 pandas==2.3.3
