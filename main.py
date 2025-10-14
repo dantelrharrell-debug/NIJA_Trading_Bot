@@ -1,143 +1,268 @@
 #!/usr/bin/env python3
 # NIJA BOT - Self-Optimizing Smart Signal Engine
+# Uses coinbase-advanced-py (import name: coinbase_advanced_py)
 
-import os, sys, time, json, traceback
-from coinbase import Client
+import os
+import sys
+import time
+import json
+import traceback
+import importlib
+from typing import List, Dict
 
+# Use the installed coinbase library
+try:
+    import coinbase_advanced_py as cb
+except ModuleNotFoundError:
+    # Helpful error: runtime installer approach could be added if needed
+    print("❌ coinbase_advanced_py not installed. Install coinbase-advanced-py==1.8.2")
+    raise
+
+# ---------------------------
+# Configuration / env
+# ---------------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
 if not API_KEY or not API_SECRET:
     raise SystemExit("❌ API_KEY or API_SECRET not set")
 
-client = Client(API_KEY, API_SECRET)
+# Initialize client
+client = cb.Client(API_KEY, API_SECRET)
 print("🚀 Coinbase client initialized successfully")
 
-# ---------- Config ----------
 MIN_ALLOCATION = 0.02
 MAX_ALLOCATION = 0.10
-TRADE_SYMBOLS = ["BTC", "ETH"]
+TRADE_SYMBOLS = ["BTC", "ETH"]          # short symbols; code converts to market (e.g. BTC-USD)
 SLEEP_SECONDS = 60
 BASE_COOLDOWN = 300
-TRADE_LOG = "trades.json"
+TRADE_LOG = "trades.jsonl"
 TRADE_HISTORY_COUNT = 5
 
 last_trade_time = {symbol: 0 for symbol in TRADE_SYMBOLS}
 
-# ---------- Helpers ----------
-def print_balances():
+# ---------------------------
+# Helpers
+# ---------------------------
+def market_for(symbol: str) -> str:
+    """Convert short symbol to Coinbase product id (market)."""
+    # Adjust if you trade other quote currencies
+    return f"{symbol}-USD"
+
+def safe_get_spot_price(market: str) -> float:
+    """Try common methods to get a spot price (adapt to client API)."""
+    # coinbase_advanced_py has get_price(product_id) in many wrappers
+    try:
+        # Try get_price first (returns dict with 'amount') if available
+        price = client.get_price(market)
+        if isinstance(price, dict) and "amount" in price:
+            return float(price["amount"])
+        # Some versions return plain float/str
+        return float(price)
+    except Exception:
+        pass
+
+    try:
+        # fallback name used in earlier code
+        price = client.get_spot_price(market)
+        if isinstance(price, dict) and "amount" in price:
+            return float(price["amount"])
+        return float(price)
+    except Exception:
+        pass
+
+    raise RuntimeError(f"Unable to fetch spot price for {market}")
+
+def print_balances() -> List[Dict]:
     try:
         balances = client.get_account_balances()
+        # Expecting a list of dicts with 'currency' and 'balance' keys; adapt if shape differs.
         for account in balances:
-            print(f"💰 {account['currency']}: {account['balance']}")
+            try:
+                cur = account.get("currency", account.get("currency_code", "UNK"))
+                bal = account.get("balance", account.get("available", 0))
+                print(f"💰 {cur}: {bal}")
+            except Exception:
+                pass
         return balances
     except Exception as e:
         print("❌ Error fetching balances:", e)
         traceback.print_exc()
         return []
 
-def get_account_equity(balances):
-    total = 0
+def get_account_equity(balances: List[Dict]) -> float:
+    total = 0.0
     try:
         for account in balances:
-            if account['currency'] == "USD":
-                total += float(account['balance'])
+            cur = account.get("currency", account.get("currency_code"))
+            bal = float(account.get("balance", account.get("available", 0)) or 0)
+            if not cur:
+                continue
+            if cur.upper() in ("USD", "USDC", "USDT"):
+                total += bal
             else:
-                price = float(client.get_spot_price(account['currency'])['amount'])
-                total += float(account['balance']) * price
+                market = market_for(cur.upper())
+                try:
+                    price = safe_get_spot_price(market)
+                    total += bal * price
+                except Exception:
+                    # If we can't price the asset, skip it
+                    pass
     except Exception as e:
         print("❌ Error calculating equity:", e)
         traceback.print_exc()
     return total
 
-def calculate_trade_amount(equity, allocation_percent, price):
+def calculate_trade_amount(equity: float, allocation_percent: float, price: float) -> float:
     allocation_percent = max(MIN_ALLOCATION, min(MAX_ALLOCATION, allocation_percent))
     usd_amount = equity * allocation_percent
-    return round(usd_amount / price, 8)
+    if price <= 0:
+        return 0.0
+    amount = usd_amount / price
+    # round to 8 decimals (adjust precision to asset)
+    return round(amount, 8)
 
-def get_rsi(symbol, period=14):
+def get_historic_closes(market: str, period: int, granularity: int = 60) -> List[float]:
+    """
+    Wrapper to fetch historical candle data. Expects client.get_historic_rates(market, granularity)
+    which returns list of candlesticks where index 4 is close and index 5 is volume (per your prior usage).
+    """
     try:
-        candles = client.get_historic_rates(symbol, granularity=60)
-        closes = [float(c[4]) for c in candles[-(period+1):]]
-        gains, losses = [], []
-        for i in range(1, len(closes)):
-            diff = closes[i] - closes[i-1]
-            gains.append(max(diff, 0))
-            losses.append(abs(min(diff, 0)))
-        avg_gain, avg_loss = sum(gains)/period, sum(losses)/period
-        return 100 - (100 / (1 + avg_gain / (avg_loss or 1e-6)))
-    except:
-        return 50
+        candles = client.get_historic_rates(market, granularity=granularity)
+        closes = [float(c[4]) for c in candles]
+        return closes[-period:]
+    except Exception as e:
+        print(f"❌ Error fetching historic rates for {market}:", e)
+        return []
 
-def get_vwap(symbol, period=20):
+def get_rsi(symbol: str, period: int = 14) -> float:
+    market = market_for(symbol)
+    closes = get_historic_closes(market, period + 1)
+    if len(closes) < period + 1:
+        return 50.0
+    gains = []
+    losses = []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i-1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    if avg_loss == 0:
+        return 100.0 if avg_gain > 0 else 50.0
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def get_vwap(symbol: str, period: int = 20) -> float:
+    market = market_for(symbol)
     try:
-        candles = client.get_historic_rates(symbol, granularity=60)
-        closes = [float(c[4]) for c in candles[-period:]]
-        volumes = [float(c[5]) for c in candles[-period:]]
-        return sum(c*v for c,v in zip(closes, volumes))/sum(volumes)
-    except:
-        return float(client.get_spot_price(symbol)['amount'])
+        candles = client.get_historic_rates(market, granularity=60)
+        recent = candles[-period:]
+        closes = [float(c[4]) for c in recent]
+        volumes = [float(c[5]) for c in recent]
+        vol_sum = sum(volumes)
+        if vol_sum == 0:
+            return safe_get_spot_price(market)
+        return sum(c * v for c, v in zip(closes, volumes)) / vol_sum
+    except Exception as e:
+        print(f"❌ VWAP error for {symbol}:", e)
+        return safe_get_spot_price(market)
 
-def get_volatility(symbol, period=20):
-    try:
-        candles = client.get_historic_rates(symbol, granularity=60)
-        closes = [float(c[4]) for c in candles[-period:]]
-        mean = sum(closes)/len(closes)
-        variance = sum((p - mean)**2 for p in closes)/len(closes)
-        return variance**0.5
-    except:
-        return 0
+def get_volatility(symbol: str, period: int = 20) -> float:
+    market = market_for(symbol)
+    closes = get_historic_closes(market, period)
+    if not closes:
+        return 0.0
+    mean = sum(closes) / len(closes)
+    variance = sum((p - mean) ** 2 for p in closes) / len(closes)
+    return variance ** 0.5
 
-def load_trade_history():
+def load_trade_history() -> Dict[str, List[Dict]]:
     history = {}
     if os.path.exists(TRADE_LOG):
         with open(TRADE_LOG, "r") as f:
             for line in f:
                 try:
                     t = json.loads(line)
-                    history.setdefault(t["symbol"], []).append(t)
-                except:
+                    history.setdefault(t.get("symbol"), []).append(t)
+                except Exception:
                     continue
     return history
 
-def adjust_allocation(symbol, base_percent):
+def adjust_allocation(symbol: str, base_percent: float) -> float:
     history = load_trade_history().get(symbol, [])[-TRADE_HISTORY_COUNT:]
     if not history:
         return base_percent
-    profit_factor = sum(t.get("profit",0) for t in history)/TRADE_HISTORY_COUNT
-    allocation = base_percent + (profit_factor*0.5)  # adjust by 50% of avg profit
+    # average profit over recent trades (if profit field present)
+    profits = [float(t.get("profit", 0) or 0) for t in history]
+    profit_factor = sum(profits) / TRADE_HISTORY_COUNT
+    allocation = base_percent + (profit_factor * 0.5)
     volatility = get_volatility(symbol)
-    allocation = allocation / (1 + volatility)  # reduce if volatile
+    allocation = allocation / (1 + volatility)
     return max(MIN_ALLOCATION, min(MAX_ALLOCATION, allocation))
 
-def can_trade(symbol):
-    return time.time() - last_trade_time[symbol] > BASE_COOLDOWN
+def can_trade(symbol: str) -> bool:
+    return time.time() - last_trade_time.get(symbol, 0) > BASE_COOLDOWN
 
-def place_trade(symbol, side, base_allocation=0.05):
+def place_trade(symbol: str, side: str, base_allocation: float = 0.05):
     try:
         balances = print_balances()
         equity = get_account_equity(balances)
-        price = float(client.get_spot_price(symbol)['amount'])
+        market = market_for(symbol)
+        price = safe_get_spot_price(market)
         allocation = adjust_allocation(symbol, base_allocation)
         amount = calculate_trade_amount(equity, allocation, price)
+
+        if amount <= 0:
+            print(f"⚠️ Computed trade amount is zero for {symbol}, skipping")
+            return
 
         if not can_trade(symbol):
             print(f"⏳ Cooldown active for {symbol}, skipping trade")
             return
 
-        print(f"⚡ Placing {side.upper()} for {symbol}: {amount} (~{allocation*100:.1f}% equity)")
-        order = client.place_order(symbol=symbol, side=side, type="market", amount=str(amount))
+        print(f"⚡ Placing {side.upper()} {symbol}: amount={amount} (~{allocation*100:.1f}% equity) at price {price}")
+
+        # NOTE: coinbase_advanced_py client place_order signature may differ.
+        # Example parameter names used by various clients:
+        #   client.place_order(product_id=market, side=side, order_type="market", size=str(amount))
+        # or
+        #   client.place_order(symbol=market, side=side, type="market", amount=str(amount))
+        #
+        # Inspect your client's method signature and adjust below if needed.
+        try:
+            order = client.place_order(product_id=market, side=side, order_type="market", size=str(amount))
+        except TypeError:
+            # fallback to alternative param names
+            order = client.place_order(symbol=market, side=side, type="market", amount=str(amount))
+        except Exception as e:
+            # final fallback: try a very generic call (if client implements differently, update code)
+            print("⚠️ place_order attempt failed:", e)
+            raise
+
         last_trade_time[symbol] = time.time()
 
+        # Log trade (no PII)
+        record = {
+            "symbol": symbol,
+            "side": side,
+            "amount": amount,
+            "price": price,
+            "timestamp": time.time()
+        }
         with open(TRADE_LOG, "a") as f:
-            f.write(json.dumps({"symbol":symbol,"side":side,"amount":amount,"price":price,"timestamp":time.time()})+"\n")
-        print("✅ Trade executed and logged")
+            f.write(json.dumps(record) + "\n")
+        print("✅ Trade executed and logged:", record)
+
     except Exception as e:
         print("❌ Trade failed:", e)
         traceback.print_exc()
 
-# ---------- Main Loop ----------
-if __name__ == "__main__":
+# ---------------------------
+# Main loop
+# ---------------------------
+def main_loop():
     print("🌟 NIJA BOT Self-Optimizing Loop Starting")
     while True:
         try:
@@ -148,9 +273,16 @@ if __name__ == "__main__":
             for symbol in TRADE_SYMBOLS:
                 rsi = get_rsi(symbol)
                 vwap = get_vwap(symbol)
-                price = float(client.get_spot_price(symbol)['amount'])
+                market = market_for(symbol)
+                try:
+                    price = safe_get_spot_price(market)
+                except Exception as e:
+                    print(f"❌ Could not fetch price for {symbol}: {e}")
+                    continue
+
                 print(f"📊 {symbol} RSI:{rsi:.2f} Price:{price:.2f} VWAP:{vwap:.2f}")
 
+                # simple signals
                 if price < vwap and rsi < 30:
                     place_trade(symbol, "buy")
                 elif price > vwap and rsi > 70:
@@ -164,3 +296,6 @@ if __name__ == "__main__":
 
         print(f"⏳ Sleeping {SLEEP_SECONDS}s before next cycle\n")
         time.sleep(SLEEP_SECONDS)
+
+if __name__ == "__main__":
+    main_loop()
