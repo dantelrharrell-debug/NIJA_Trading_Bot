@@ -1,33 +1,36 @@
 #!/usr/bin/env bash
+set -eo pipefail
+
 # ------------------------------
 # start.sh for Render deploy
-# Handles venv, dependencies, and runs nija_bot.py
 # ------------------------------
-
-set -eo pipefail
 
 VENV=".venv"
 PY="$VENV/bin/python3"
 
-echo "==> Setting up Python virtual environment..."
-
-# 1️⃣ Create venv if missing
+# 1️⃣ Create virtual environment if it doesn't exist
 if [ ! -d "$VENV" ]; then
+    echo "🛠️ Creating virtual environment..."
     python3 -m venv "$VENV"
 fi
 
-# 2️⃣ Activate venv
+# 2️⃣ Activate virtual environment
+echo "⚡ Activating virtual environment..."
 source "$VENV/bin/activate"
 
 # 3️⃣ Upgrade pip
+echo "📦 Upgrading pip..."
 pip install --upgrade pip
 
 # 4️⃣ Install dependencies
-pip install --no-cache-dir -r requirements.txt
+if [ -f requirements.txt ]; then
+    echo "📥 Installing dependencies from requirements.txt..."
+    pip install -r requirements.txt
+else
+    echo "❌ requirements.txt not found!"
+    exit 1
+fi
 
-# 5️⃣ Debug info (optional, remove in production)
-echo "📦 Installed packages (head of pip freeze):"
-pip freeze | head -n 20
-
-echo "🚀 Starting nija_bot.py..."
-python3 nija_bot.py
+# 5️⃣ Run nija_bot.py
+echo "🚀 Starting Nija Trading Bot..."
+exec "$PY" nija_bot.py
