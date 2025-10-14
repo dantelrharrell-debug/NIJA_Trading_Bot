@@ -1,11 +1,8 @@
 #!/bin/bash
-# ========================
-# START SCRIPT - NIJA BOT
-# ========================
 
 echo "🔄 Starting NIJA BOT..."
 
-# Activate virtual environment if it exists
+# Create/activate virtual environment
 if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
     echo "✅ Virtual environment activated."
@@ -18,13 +15,9 @@ fi
 # Upgrade pip
 python3 -m pip install --upgrade pip
 
-# Install requirements
-if [ -f "requirements.txt" ]; then
-    pip install --no-cache-dir -r requirements.txt
-else
-    echo "⚠️ requirements.txt not found. Installing essential packages..."
-    pip install --no-cache-dir coinbase-advanced-py==1.8.2 python-dotenv flask gunicorn pandas numpy
-fi
+# Install essential packages
+pip install --no-cache-dir -r requirements.txt || \
+pip install --no-cache-dir coinbase-advanced-py==1.8.2 python-dotenv flask gunicorn pandas numpy
 
 # Run the bot
 echo "🚀 Running nija_bot.py..."
