@@ -1,9 +1,14 @@
 #!/bin/bash
-# Activate the virtual environment FIRST
+
+# 1️⃣ Activate the virtual environment
 source .venv/bin/activate
 
-# Optional: force reinstall to be 100% sure
-pip install --force-reinstall coinbase-advanced-py==1.8.2
+# 2️⃣ Reinstall packages just to be 100% sure
+pip install --upgrade pip
+pip install --force-reinstall -r requirements.txt
 
-# Run your bot
+# 3️⃣ Debug: show which Python and installed packages (optional)
+python3 -c "import sys, coinbase_advanced_py; print('Python:', sys.executable); print('Coinbase module loaded:', coinbase_advanced_py.__version__)"
+
+# 4️⃣ Run the bot inside the venv
 python3 nija_bot.py
