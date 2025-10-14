@@ -1,37 +1,27 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-# ------------------------------
-# start.sh - Render deploy starter
-# ------------------------------
-
 VENV=".venv"
 PY="$VENV/bin/python3"
 
-# 1️⃣ Create virtual environment if missing
+# Create virtual environment if missing
 if [ ! -d "$VENV" ]; then
     echo "🟢 Creating virtual environment..."
     python3 -m venv "$VENV"
 fi
 
-# 2️⃣ Activate virtual environment
-source "$VENV/bin/activate"
-
-# 3️⃣ Upgrade pip
+# Upgrade pip in venv
 echo "🔄 Upgrading pip..."
-pip install --upgrade pip
+"$PY" -m pip install --upgrade pip
 
-# 4️⃣ Install dependencies
+# Install dependencies in venv
 echo "📦 Installing requirements..."
-pip install -r requirements.txt
+"$PY" -m pip install -r requirements.txt
 
-# 5️⃣ Ensure coinbase-advanced-py is importable
-echo "🔍 Checking Coinbase library..."
-if ! "$PY" -c "import coinbase_advanced_py" &> /dev/null; then
-    echo "⚠️ coinbase_advanced_py not found, installing..."
-    pip install --no-cache-dir coinbase-advanced-py==1.8.2
-fi
+# Install Coinbase package explicitly in venv
+echo "🔍 Ensuring coinbase-advanced-py is installed..."
+"$PY" -m pip install --no-cache-dir coinbase-advanced-py==1.8.2
 
-# 6️⃣ Run the bot
+# ✅ Run your bot using venv python
 echo "🚀 Starting nija_bot.py..."
 exec "$PY" nija_bot.py
