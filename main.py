@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
-# main.py / nija_bot.py - NIJA BOT fully live
+# NIJA BOT - Self-Optimizing Smart Signal Engine
 
-import os
-import sys
-import json
-import traceback
+import os, sys, time, json, traceback
 from coinbase import Client
 
-# ---------- Environment & API Setup ----------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 
 if not API_KEY or not API_SECRET:
-    raise SystemExit("❌ API_KEY or API_SECRET not set in environment variables")
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
 
 client = Client(API_KEY, API_SECRET)
 print("🚀 Coinbase client initialized successfully")
 
 # ---------- Config ----------
-MIN_ALLOCATION = 0.02  # 2%
-MAX_ALLOCATION = 0.10  # 10%
-TRADE_SYMBOLS = ["BTC", "ETH"]  # Add more if needed
+MIN_ALLOCATION = 0.02
+MAX_ALLOCATION = 0.10
+TRADE_SYMBOLS = ["BTC", "ETH"]
+SLEEP_SECONDS = 60
+BASE_COOLDOWN = 300
+TRADE_LOG = "trades.json"
+TRADE_HISTORY_COUNT = 5
 
-# ---------- Helper Functions ----------
+last_trade_time = {symbol: 0 for symbol in TRADE_SYMBOLS}
+
+# ---------- Helpers ----------
 def print_balances():
-    """Fetch and print all account balances"""
     try:
         balances = client.get_account_balances()
-        print("💰 Account Balances:")
         for account in balances:
-            print(f"  {account['currency']}: {account['balance']}")
+            print(f"💰 {account['currency']}: {account['balance']}")
         return balances
     except Exception as e:
         print("❌ Error fetching balances:", e)
@@ -37,60 +37,130 @@ def print_balances():
         return []
 
 def get_account_equity(balances):
-    """Return total USD-equivalent account equity"""
     total = 0
     try:
         for account in balances:
-            # Use USD balance directly
             if account['currency'] == "USD":
                 total += float(account['balance'])
             else:
-                # Convert crypto balance to USD
-                price = client.get_spot_price(account['currency'])
-                total += float(account['balance']) * float(price['amount'])
+                price = float(client.get_spot_price(account['currency'])['amount'])
+                total += float(account['balance']) * price
     except Exception as e:
         print("❌ Error calculating equity:", e)
         traceback.print_exc()
     return total
 
 def calculate_trade_amount(equity, allocation_percent, price):
-    """Determine trade amount based on allocation rules"""
     allocation_percent = max(MIN_ALLOCATION, min(MAX_ALLOCATION, allocation_percent))
     usd_amount = equity * allocation_percent
-    crypto_amount = usd_amount / price
-    return round(crypto_amount, 8)
+    return round(usd_amount / price, 8)
 
-def place_trade(symbol, side, allocation_percent=0.05):
-    """Place a live trade with dynamic sizing"""
+def get_rsi(symbol, period=14):
+    try:
+        candles = client.get_historic_rates(symbol, granularity=60)
+        closes = [float(c[4]) for c in candles[-(period+1):]]
+        gains, losses = [], []
+        for i in range(1, len(closes)):
+            diff = closes[i] - closes[i-1]
+            gains.append(max(diff, 0))
+            losses.append(abs(min(diff, 0)))
+        avg_gain, avg_loss = sum(gains)/period, sum(losses)/period
+        return 100 - (100 / (1 + avg_gain / (avg_loss or 1e-6)))
+    except:
+        return 50
+
+def get_vwap(symbol, period=20):
+    try:
+        candles = client.get_historic_rates(symbol, granularity=60)
+        closes = [float(c[4]) for c in candles[-period:]]
+        volumes = [float(c[5]) for c in candles[-period:]]
+        return sum(c*v for c,v in zip(closes, volumes))/sum(volumes)
+    except:
+        return float(client.get_spot_price(symbol)['amount'])
+
+def get_volatility(symbol, period=20):
+    try:
+        candles = client.get_historic_rates(symbol, granularity=60)
+        closes = [float(c[4]) for c in candles[-period:]]
+        mean = sum(closes)/len(closes)
+        variance = sum((p - mean)**2 for p in closes)/len(closes)
+        return variance**0.5
+    except:
+        return 0
+
+def load_trade_history():
+    history = {}
+    if os.path.exists(TRADE_LOG):
+        with open(TRADE_LOG, "r") as f:
+            for line in f:
+                try:
+                    t = json.loads(line)
+                    history.setdefault(t["symbol"], []).append(t)
+                except:
+                    continue
+    return history
+
+def adjust_allocation(symbol, base_percent):
+    history = load_trade_history().get(symbol, [])[-TRADE_HISTORY_COUNT:]
+    if not history:
+        return base_percent
+    profit_factor = sum(t.get("profit",0) for t in history)/TRADE_HISTORY_COUNT
+    allocation = base_percent + (profit_factor*0.5)  # adjust by 50% of avg profit
+    volatility = get_volatility(symbol)
+    allocation = allocation / (1 + volatility)  # reduce if volatile
+    return max(MIN_ALLOCATION, min(MAX_ALLOCATION, allocation))
+
+def can_trade(symbol):
+    return time.time() - last_trade_time[symbol] > BASE_COOLDOWN
+
+def place_trade(symbol, side, base_allocation=0.05):
     try:
         balances = print_balances()
         equity = get_account_equity(balances)
         price = float(client.get_spot_price(symbol)['amount'])
-        amount = calculate_trade_amount(equity, allocation_percent, price)
+        allocation = adjust_allocation(symbol, base_allocation)
+        amount = calculate_trade_amount(equity, allocation, price)
 
-        print(f"⚡ Placing {side.upper()} order for {symbol}: {amount} (~{allocation_percent*100}% of equity)")
-        order = client.place_order(
-            symbol=symbol,
-            side=side,
-            type="market",
-            amount=str(amount)
-        )
-        print("✅ Order executed:", order)
+        if not can_trade(symbol):
+            print(f"⏳ Cooldown active for {symbol}, skipping trade")
+            return
+
+        print(f"⚡ Placing {side.upper()} for {symbol}: {amount} (~{allocation*100:.1f}% equity)")
+        order = client.place_order(symbol=symbol, side=side, type="market", amount=str(amount))
+        last_trade_time[symbol] = time.time()
+
+        with open(TRADE_LOG, "a") as f:
+            f.write(json.dumps({"symbol":symbol,"side":side,"amount":amount,"price":price,"timestamp":time.time()})+"\n")
+        print("✅ Trade executed and logged")
     except Exception as e:
         print("❌ Trade failed:", e)
         traceback.print_exc()
 
-# ---------- Main Bot Logic ----------
+# ---------- Main Loop ----------
 if __name__ == "__main__":
-    print("🌟 NIJA BOT starting...")
-    print("Python executable:", sys.executable)
-    print("sys.path:", sys.path)
+    print("🌟 NIJA BOT Self-Optimizing Loop Starting")
+    while True:
+        try:
+            balances = print_balances()
+            equity = get_account_equity(balances)
+            print(f"💵 Total Equity: ${equity:.2f}")
 
-    # Test balances
-    print_balances()
+            for symbol in TRADE_SYMBOLS:
+                rsi = get_rsi(symbol)
+                vwap = get_vwap(symbol)
+                price = float(client.get_spot_price(symbol)['amount'])
+                print(f"📊 {symbol} RSI:{rsi:.2f} Price:{price:.2f} VWAP:{vwap:.2f}")
 
-    # Example trades
-    for symbol in TRADE_SYMBOLS:
-        place_trade(symbol, "buy", allocation_percent=0.05)
+                if price < vwap and rsi < 30:
+                    place_trade(symbol, "buy")
+                elif price > vwap and rsi > 70:
+                    place_trade(symbol, "sell")
+                else:
+                    print(f"ℹ️ No signal for {symbol}")
 
-    print("🔥 Bot running. Ready for live trades!")
+        except Exception as e:
+            print("❌ Main loop error:", e)
+            traceback.print_exc()
+
+        print(f"⏳ Sleeping {SLEEP_SECONDS}s before next cycle\n")
+        time.sleep(SLEEP_SECONDS)
