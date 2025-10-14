@@ -1,3 +1,7 @@
+import sys
+print("Python executable:", sys.executable)
+print("Python path:", sys.path)
+
 #!/usr/bin/env python3
 import os
 import json
