@@ -1,77 +1,56 @@
 #!/usr/bin/env python3
 import os
-import sys
-import importlib.util
-from dotenv import load_dotenv
-
-load_dotenv()
-
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-print("✅ API_KEY and API_SECRET loaded:", bool(API_KEY), bool(API_SECRET))
-
-# Diagnostics to confirm which Python and site-packages are used
-print("Python executable:", sys.executable)
-print("sys.path (first 6):", sys.path[:6])
-
-# Try correct import used by coinbase-advanced-py
-try:
-    from coinbase.rest import RESTClient
-    print("✅ coinbase (coinbase-advanced-py) import successful: from coinbase.rest import RESTClient")
-except ModuleNotFoundError as exc:
-    print("❌ coinbase NOT found. ModuleNotFoundError:", exc)
-    print("importlib.util.find_spec('coinbase'):", importlib.util.find_spec("coinbase"))
-    # Fail fast during deploy if you want to stop startup when missing:
-    sys.exit(1)
-
-# (Optional) quick sanity: check unexpected package name
-try:
-    import coinbase_advanced_py
-    print("⚠️  coinbase_advanced_py unexpectedly present")
-except ModuleNotFoundError:
-    print("ℹ️  coinbase_advanced_py not present (expected)")
-
-#!/usr/bin/env python3
-import os
-import sys
-import importlib.util
-from dotenv import load_dotenv
-
-load_dotenv()
-
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-print("✅ API_KEY and API_SECRET loaded:", bool(API_KEY), bool(API_SECRET))
-
-# Diagnostics to confirm which Python and site-packages are used
-print("Python executable:", sys.executable)
-print("sys.path (first 6):", sys.path[:6])
-
-# Try correct import used by coinbase-advanced-py
-try:
-    from coinbase.rest import RESTClient
-    print("✅ coinbase (coinbase-advanced-py) import successful: from coinbase.rest import RESTClient")
-except ModuleNotFoundError as exc:
-    print("❌ coinbase NOT found. ModuleNotFoundError:", exc)
-    print("importlib.util.find_spec('coinbase'):", importlib.util.find_spec("coinbase"))
-    # Fail fast during deploy if you want to stop startup when missing:
-    sys.exit(1)
-
-# (Optional) quick sanity: check unexpected package name
-try:
-    import coinbase_advanced_py
-    print("⚠️  coinbase_advanced_py unexpectedly present")
-except ModuleNotFoundError:
-    print("ℹ️  coinbase_advanced_py not present (expected)")
-
 import time
+import traceback
 
-print("🚀 Bot started")
+# ✅ Load Coinbase client
+try:
+    from coinbase_advanced_py import Client
+except ModuleNotFoundError:
+    print("❌ coinbase_advanced_py not installed or not found")
+    raise
 
+# Load environment variables
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set in environment variables")
+
+# Initialize Coinbase client
+client = Client(API_KEY, API_SECRET)
+print("✅ Coinbase client initialized")
+
+# Optional: function to fetch and print balances
+def check_balances():
+    try:
+        balances = client.get_account_balances()
+        print("💰 Balances:", balances)
+    except Exception as e:
+        print("❌ Error fetching balances:", e)
+        traceback.print_exc()
+
+# Optional: function to execute trades
+def execute_trades():
+    try:
+        # Example: replace with your bot logic
+        print("🔄 Executing trade logic...")
+    except Exception as e:
+        print("❌ Trade execution error:", e)
+        traceback.print_exc()
+
+# ---------------------- MAIN LOOP ----------------------
+print("🚀 Bot started and running")
 while True:
     try:
-        # Your trading logic here
-        time.sleep(1)  # sleep prevents 100% CPU usage
-    except Exception as e:
-        print("❌ Error:", e)
+        check_balances()
+        execute_trades()
+        # Sleep between iterations to avoid API rate limits
+        time.sleep(5)  # adjust as needed
+    except KeyboardInterrupt:
+        print("🛑 Bot stopped manually")
+        break
+    except Exception as main_e:
+        print("❌ Unexpected error in main loop:", main_e)
+        traceback.print_exc()
         time.sleep(5)
