@@ -1,3 +1,17 @@
+# ------------------ BOT SETTINGS ------------------
+TICKERS = ["BTC", "ETH", "SOL", "ADA"]  # add all your tickers
+LIVE_TRADING = True
+
+RISK = {
+    "min_pct": 0.02,
+    "max_pct": 0.10
+}
+
+STATE = {
+    "trade_history": []
+}
+# ---------------------------------------------------
+
 #!/usr/bin/env python3
 import sys
 import os
