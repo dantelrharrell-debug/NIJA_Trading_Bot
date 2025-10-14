@@ -1,3 +1,10 @@
+import sys
+import site
+
+print("Python executable:", sys.executable)
+print("Python path:", sys.path)
+print("Site packages:", site.getsitepackages())
+
 #!/usr/bin/env python3
 import os
 import json
