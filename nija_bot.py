@@ -1,5 +1,42 @@
 import os
 import coinbase as cb  # correct import for coinbase-advanced-py
+#!/bin/bash
+set -euo pipefail
+
+# -----------------------
+# Activate virtualenv
+# -----------------------
+echo "🟢 Activating venv..."
+source /opt/render/project/src/.venv/bin/activate
+
+VENV_PY=".venv/bin/python"
+VENV_PIP=".venv/bin/pip"
+
+# -----------------------
+# Install dependencies
+# -----------------------
+echo "🟢 Installing dependencies..."
+$VENV_PY -m pip install --upgrade pip
+$VENV_PIP install -r requirements.txt
+
+# -----------------------
+# Write PEM file from env
+# -----------------------
+PEM_PATH="/tmp/my_coinbase_key.pem"
+
+if [[ -n "${COINBASE_PEM:-}" ]]; then
+    echo "🟢 Writing PEM file..."
+    echo "$COINBASE_PEM" > "$PEM_PATH"
+    echo "✅ PEM written to $PEM_PATH"
+else
+    echo "⚠️ COINBASE_PEM not set. Bot will run with mock balances."
+fi
+
+# -----------------------
+# Start the bot
+# -----------------------
+echo "🚀 Starting Nija Bot..."
+$VENV_PY nija_bot.py
 
 # -------------------------------
 # Coinbase PEM / Live trading setup
