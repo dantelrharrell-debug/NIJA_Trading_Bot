@@ -1,6 +1,76 @@
 #!/usr/bin/env python3
 import os
 import sys
+import traceback
+from flask import Flask
+from dotenv import load_dotenv
+
+# ---------------------------
+# Load environment variables
+# ---------------------------
+load_dotenv()
+
+USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+API_PASSPHRASE = os.getenv("API_PASSPHRASE")  # if required
+
+# ---------------------------
+# Determine client
+# ---------------------------
+coinbase_client = None
+
+if not USE_MOCK and API_KEY and API_SECRET:
+    try:
+        import coinbase_advanced_py as cb
+        coinbase_client = cb.Client(
+            api_key=API_KEY,
+            api_secret=API_SECRET,
+            api_passphrase=API_PASSPHRASE  # optional
+        )
+        print("✅ Coinbase client initialized (live trading)")
+    except Exception as e:
+        print("❌ Failed to initialize Coinbase client:", e)
+        USE_MOCK = True
+
+# ---------------------------
+# Define MockClient fallback
+# ---------------------------
+class MockClient:
+    def __init__(self):
+        print("⚠️ MockClient initialized (no live trading)")
+
+    def get_account(self):
+        return {"balance": 0}
+
+    def place_order(self, *args, **kwargs):
+        print(f"Mock order: args={args}, kwargs={kwargs}")
+        return {"id": "mock_order"}
+
+if coinbase_client is None:
+    coinbase_client = MockClient()
+    USE_MOCK = True
+
+print("sys.executable:", sys.executable)
+print("sys.path:", sys.path)
+print("USE_MOCK:", USE_MOCK)
+
+# ---------------------------
+# Flask setup
+# ---------------------------
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "NIJA Bot is running!"
+
+if __name__ == "__main__":
+    print("🚀 Starting NIJA Bot Flask server on port 10000...")
+    app.run(host="0.0.0.0", port=10000)
+
+#!/usr/bin/env python3
+import os
+import sys
 from flask import Flask, jsonify
 from dotenv import load_dotenv
 
