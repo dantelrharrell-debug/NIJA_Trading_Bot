@@ -1,28 +1,18 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+# build.sh
 
-echo "🚀 Starting build..."
-
-# 1. Create or reuse virtualenv
+# Create virtualenv if it doesn't exist
 python3 -m venv .venv
 
-# 2. Ensure pip present in venv and upgrade tools
-.venv/bin/python -m ensurepip --upgrade
-.venv/bin/pip install --upgrade pip setuptools wheel
+# Activate virtualenv
+source .venv/bin/activate
 
-# 3. Install requirements into the venv
-.venv/bin/pip install -r requirements.txt
+# Upgrade pip just in case
+pip install --upgrade pip
 
-echo "✅ Requirements installed"
+# Install all dependencies
+pip install --no-cache-dir -r requirements.txt
 
-# 4. Debug: verify venv python & coinbase availability
-.venv/bin/python - <<'PY'
-import sys, pkgutil
-print("VENV PYTHON:", sys.executable)
-print("sys.path (first 6):", sys.path[:6])
-print("coinbase_advanced_py loader:", pkgutil.find_loader("coinbase_advanced_py"))
-PY
-
-# 5. Run the app with the venv python
-.venv/bin/python main.py
-echo "🚀 Bot started"
+# Reinstall coinbase-advanced-py to fix module detection
+pip uninstall -y coinbase-advanced-py
+pip install --no-cache-dir coinbase-advanced-py==1.8.2
