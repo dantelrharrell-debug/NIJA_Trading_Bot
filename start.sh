@@ -1,4 +1,17 @@
 #!/bin/bash
+# start.sh
+
+# Activate the virtual environment
+source /opt/render/project/src/.venv/bin/activate
+
+# Optional: verify python path
+which python
+python -m pip show coinbase-advanced-py
+
+# Run your bot
+python /opt/render/project/src/nija_bot.py
+
+#!/bin/bash
 
 # Activate virtual environment
 source /opt/render/project/src/.venv/bin/activate
