@@ -1,6 +1,19 @@
 #!/bin/bash
 # start.sh
 
+# 1️⃣ Activate virtual environment
+source .venv/bin/activate
+
+# 2️⃣ Optional debug
+echo "🟢 Python: $(which python)"
+python -m pip show coinbase-advanced-py
+
+# 3️⃣ Run bot explicitly with venv Python
+.venv/bin/python nija_bot.py
+
+#!/bin/bash
+# start.sh
+
 # ----------------------
 # 1. Activate virtual environment
 # ----------------------
