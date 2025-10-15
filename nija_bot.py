@@ -1,3 +1,7 @@
+import sys
+# adjust this path to match your Render virtualenv location
+sys.path.insert(0, "/opt/render/project/src/.venv/lib/python3.13/site-packages")
+
 #!/usr/bin/env python3
 from dotenv import load_dotenv
 load_dotenv()
