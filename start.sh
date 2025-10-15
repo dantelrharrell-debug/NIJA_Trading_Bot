@@ -1,4 +1,20 @@
 #!/bin/bash
+# Only create venv if it doesn't exist
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+fi
+
+# Activate venv
+source .venv/bin/activate
+
+# Ensure latest pip & install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Run the bot
+python3 nija_bot.py
+
+#!/bin/bash
 # Activate venv if it exists
 if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
