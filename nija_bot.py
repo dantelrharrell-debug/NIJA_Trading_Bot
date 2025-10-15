@@ -1,4 +1,36 @@
 #!/usr/bin/env python3
+import os
+import sys
+import traceback
+import json
+import time
+from flask import Flask
+
+# --------------------------
+# Coinbase advanced client
+# --------------------------
+import coinbase_advanced_py as cb  # <--- put it here
+
+# --------------------------
+# Load API keys from environment
+# --------------------------
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
+
+# Initialize Coinbase client
+try:
+    client = cb.Client(API_KEY, API_SECRET)
+    print("✅ Coinbase client connected — LIVE_TRADING=True")
+except Exception as e:
+    print("❌ Failed to initialize live Coinbase client:", e)
+    print("⚠️ Running in mock mode — LIVE_TRADING=False")
+    from mock_client import MockClient  # assuming you have a mock client file
+    client = MockClient()
+
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # -------------------
