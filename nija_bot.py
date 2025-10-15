@@ -1,3 +1,9 @@
+python -c "import importlib, sys
+try:
+    importlib.import_module('coinbase_advanced_py'); print('coinbase_advanced_py import OK')
+except Exception as e:
+    print('coinbase_advanced_py import failed:', e)"
+
 from dotenv import load_dotenv
 load_dotenv()
 #!/usr/bin/env python3
