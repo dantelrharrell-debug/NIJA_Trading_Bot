@@ -1,12 +1,9 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
+set -e
 
-echo "🟢 Activating venv..."
-source .venv/bin/activate
+echo "🔧 Ensuring coinbase-advanced-py is installed..."
+pip install --upgrade pip setuptools wheel
+pip install --no-cache-dir coinbase-advanced-py==1.8.2
 
-echo "🟢 Installing dependencies (safe - pip will skip already satisfied)..."
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-
-echo "🚀 Starting Nija Bot..."
-python nija_bot.py
+echo "🚀 Launching NIJA Bot..."
+python3 nija_bot.py
