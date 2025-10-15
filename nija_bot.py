@@ -1,4 +1,29 @@
 #!/usr/bin/env python3
+
+# 1️⃣ Load environment variables and validate keys
+import os
+from pathlib import Path
+
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
+
+pem_path = Path(API_SECRET)
+if not pem_path.is_file():
+    raise SystemExit(f"❌ PEM file not found at {pem_path}")
+
+# 2️⃣ Now import other modules
+import coinbase_advanced_py as cb
+from flask import Flask
+
+# 3️⃣ Initialize client safely
+client = cb.Client(API_KEY, pem_path)
+
+# 4️⃣ Continue with your bot code...
+
+#!/usr/bin/env python3
 import os
 import sys
 from pathlib import Path
