@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# nija_bot.py — robust Coinbase client autodetector + safe fallback
+# nija_bot.py — Coinbase RESTClient ready + safe fallback
 
 import os
 import importlib
@@ -16,101 +16,60 @@ client = None
 def debug(msg):
     print("DEBUG:", msg)
 
-# ----------------------
+# ------------------------
 # MockClient fallback
-# ----------------------
+# ------------------------
 class MockClient:
     def get_account_balances(self):
         return {'USD': 10000.0, 'BTC': 0.05}
+
+    def get_accounts(self):
+        return {'data': [
+            {'currency': 'USD', 'balance': {'amount': '10000.0'}},
+            {'currency': 'BTC', 'balance': {'amount': '0.05'}}
+        ]}
+
     def place_order(self, *a, **k):
         raise RuntimeError("DRY RUN: MockClient refuses to place orders")
 
-# ----------------------
-# Coinbase detection + client init
-# ----------------------
-def find_coinbase_module():
-    try:
-        m = importlib.import_module("coinbase")
-        debug(f"imported module -> {m.__name__}")
-        return m
-    except Exception as e:
-        debug(f"failed to import 'coinbase': {e}")
-        return None
+# ------------------------
+# Try to load coinbase.rest.RESTClient
+# ------------------------
+try:
+    cb = importlib.import_module("coinbase")
+    rest_mod = importlib.import_module("coinbase.rest")
+    debug(f"found REST module: {rest_mod}")
 
-def collect_candidates(cb_mod):
-    candidates = []
-    for sub in ("rest", "websocket", "api_base", "client"):
+    if API_KEY and API_SECRET and hasattr(rest_mod, "RESTClient"):
+        debug("attempting RESTClient instantiation")
         try:
-            sm = importlib.import_module(f"coinbase.{sub}")
-            debug(f"found submodule coinbase.{sub}")
-            for name, obj in inspect.getmembers(sm, lambda o: inspect.isclass(o) or inspect.isfunction(o)):
-                lowered = name.lower()
-                if any(k in lowered for k in ("client", "rest", "api", "ws", "websocket")):
-                    candidates.append((f"coinbase.{sub}.{name}", obj))
-        except Exception:
-            pass
-    try:
-        for name, obj in inspect.getmembers(cb_mod, lambda o: inspect.isclass(o) or inspect.isfunction(o)):
-            lowered = name.lower()
-            if any(k in lowered for k in ("client", "rest", "api")):
-                candidates.append((f"coinbase.{name}", obj))
-    except Exception:
-        pass
-    # dedupe
-    seen = {}
-    for fullname, obj in candidates:
-        if fullname not in seen:
-            seen[fullname] = obj
-    return list(seen.items())
-
-def try_instantiate(candidate_obj, api_key, api_secret):
-    if inspect.isfunction(candidate_obj):
-        for args in [(api_key, api_secret), ()]:
-            try:
-                debug(f"trying function {candidate_obj.__name__} with args {args}")
-                return candidate_obj(*args)
-            except Exception as e:
-                debug(f"function call failed: {type(e).__name__} {e}")
-    if inspect.isclass(candidate_obj):
-        attempts = [
-            ((api_key, api_secret), {}),
-            ((), {"api_key": api_key, "api_secret": api_secret}),
-            ((), {"key": api_key, "secret": api_secret}),
-            ((), {"client_id": api_key, "client_secret": api_secret}),
-        ]
-        for args, kwargs in attempts:
-            try:
-                debug(f"trying class {candidate_obj.__name__} with args={args} kwargs={list(kwargs.keys())}")
-                return candidate_obj(*args, **kwargs)
-            except Exception as e:
-                debug(f"construction failed: {type(e).__name__} {e}")
-    raise RuntimeError("All instantiation attempts failed for candidate.")
-
-cb = find_coinbase_module()
-if cb and API_KEY and API_SECRET:
-    candidates = collect_candidates(cb)
-    debug(f"candidates found ({len(candidates)}): {[name for name, _ in candidates]}")
-    for fullname, obj in candidates:
-        try:
-            inst = try_instantiate(obj, API_KEY, API_SECRET)
-            if inst and (hasattr(inst, "get_account_balances") or hasattr(inst, "get_accounts") or hasattr(inst, "list_accounts")):
-                client = inst
-                LIVE_TRADING = True
-                debug(f"SUCCESS: instantiated client from {fullname}. LIVE_TRADING=True")
-                break
+            client = rest_mod.RESTClient(API_KEY, API_SECRET)
+            LIVE_TRADING = True
+            debug("✅ RESTClient instantiated. LIVE_TRADING=True")
         except Exception as e:
-            debug(f"candidate {fullname} failed: {type(e).__name__} {e}")
-            debug(traceback.format_exc())
-
-if not LIVE_TRADING or client is None:
-    debug("WARN: falling back to MockClient (no live Coinbase client available)")
+            debug(f"RESTClient instantiation failed: {type(e).__name__} {e}")
+            client = MockClient()
+            LIVE_TRADING = False
+    else:
+        debug("RESTClient not available or API keys missing")
+        client = MockClient()
+except Exception as e:
+    debug(f"Coinbase RESTClient load failed: {type(e).__name__} {e}")
     client = MockClient()
 
-# ----------------------
-# Startup balances (safe)
-# ----------------------
+# ------------------------
+# Fetch balances
+# ------------------------
 try:
-    balances = client.get_account_balances()
+    balances = {}
+    if LIVE_TRADING and hasattr(client, "get_accounts"):
+        raw_accounts = client.get_accounts()
+        # coinbase.rest.RESTClient returns dict with 'data' list
+        for acc in raw_accounts.get('data', []):
+            balances[acc['currency']] = float(acc['balance']['amount'])
+    else:
+        # fallback for MockClient or missing get_accounts
+        balances = client.get_account_balances()
 except Exception as e:
     debug(f"Error reading balances: {type(e).__name__} {e}")
     balances = {"error": str(e)}
@@ -118,9 +77,9 @@ except Exception as e:
 print(f"💰 Starting balances: {balances}")
 print(f"🔒 LIVE_TRADING = {LIVE_TRADING}")
 
-# ----------------------
+# ------------------------
 # Flask setup
-# ----------------------
+# ------------------------
 app = Flask("nija_bot")
 
 @app.route("/")
@@ -131,9 +90,9 @@ def home():
         "balances": balances
     })
 
-# ----------------------
+# ------------------------
 # Start Flask server
-# ----------------------
+# ------------------------
 if __name__ == "__main__":
     print("🚀 Starting NIJA Bot Flask server...")
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
