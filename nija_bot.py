@@ -1,4 +1,25 @@
 #!/usr/bin/env python3
+import sys
+import os
+
+# ---------------------------
+# Coinbase import check
+# ---------------------------
+try:
+    import coinbase_advanced_py as cb
+    coinbase_client = cb
+    print("✅ Imported coinbase_advanced_py")
+except ModuleNotFoundError as e:
+    print("❌ Coinbase import failed:", e)
+    coinbase_client = None  # fallback to MockClient
+
+# ---------------------------
+# Debug info
+# ---------------------------
+print("sys.executable:", sys.executable)
+print("sys.path:", sys.path)
+
+#!/usr/bin/env python3
 import os
 import sys
 
