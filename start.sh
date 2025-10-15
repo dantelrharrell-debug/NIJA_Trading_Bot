@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Activate virtual environment
+source /opt/render/project/src/.venv/bin/activate
+
+# Run the bot with the same Python
+python3 nija_bot.py
+
+#!/bin/bash
+
 # ----------------------
 # 1. Activate virtual environment
 # ----------------------
