@@ -1,70 +1,43 @@
-#!/usr/bin/env python3
 import os
-import sys
-import traceback
-import json
-from flask import Flask, jsonify
+import coinbase as cb  # correct import for coinbase-advanced-py
 
 # -------------------------------
 # Coinbase PEM / Live trading setup
 # -------------------------------
-try:
-    import coinbase_advanced_py as cb
-except ModuleNotFoundError:
-    print("❌ coinbase_advanced_py not found. Using MockClient.")
-    cb = None
 
+# Path where PEM will be temporarily written
 PEM_PATH = "/tmp/my_coinbase_key.pem"
+
+# Fetch PEM content from environment variable
 PEM_CONTENT = os.getenv("COINBASE_PEM")
 
-if PEM_CONTENT and cb:
+if PEM_CONTENT:
+    # Write PEM content to temporary file
     with open(PEM_PATH, "w") as f:
         f.write(PEM_CONTENT)
+    print(f"✅ PEM written to {PEM_PATH}")
+
     try:
+        # Initialize real Coinbase client
         client = cb.Client(api_key_path=PEM_PATH)
         LIVE_TRADING = True
         print("✅ Live Coinbase client initialized")
     except Exception as e:
         print(f"❌ Failed to initialize Coinbase client: {e}")
-        cb = None
+        print("⚠️ Falling back to MockClient")
+        from mock_client import MockClient  # your existing mock
+        client = MockClient()
+        LIVE_TRADING = False
 else:
-    cb = None
-
-# -------------------------------
-# Fallback MockClient if live fails
-# -------------------------------
-if cb is None:
-    print("⚠️ Using MockClient")
-    class MockClient:
-        def get_account_balances(self):
-            return {"USD": 10000.0, "BTC": 0.05}
+    # PEM not found → fallback to mock client
+    print("⚠️ COINBASE_PEM not set, using MockClient")
+    from mock_client import MockClient  # your existing mock
     client = MockClient()
     LIVE_TRADING = False
 
 # -------------------------------
-# Check starting balances
+# Example: check balances
 # -------------------------------
 balances = client.get_account_balances()
 print(f"💰 Starting balances: {balances}")
 print(f"🔒 LIVE_TRADING = {LIVE_TRADING}")
-
-# -------------------------------
-# Flask server setup
-# -------------------------------
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return jsonify({"status": "NIJA Bot is running", "balances": balances})
-
-@app.route("/balances")
-def get_balances():
-    return jsonify({"balances": client.get_account_balances(), "live_trading": LIVE_TRADING})
-
-# -------------------------------
-# Start Flask server
-# -------------------------------
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
-    print(f"🚀 Starting NIJA Bot Flask server on port {port}...")
-    app.run(host="0.0.0.0", port=port)
