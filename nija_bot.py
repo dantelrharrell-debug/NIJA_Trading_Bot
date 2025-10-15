@@ -1,3 +1,6 @@
+import pkgutil
+print([p.name for p in pkgutil.iter_modules()])
+
 #!/usr/bin/env python3
 import os
 import coinbase_advanced as cb  # <-- fix here
