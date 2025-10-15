@@ -1,37 +1,44 @@
 #!/bin/bash
-# start.sh
+# start.sh — optimized, pre-built wheels for fast deploy
 
 # ----------------------
-# 1. Activate virtual environment
+# 1️⃣ Activate or create virtual environment
 # ----------------------
 if [ -d ".venv" ]; then
-    source .venv/bin/activate
+    echo "🟢 Activating existing virtual environment..."
 else
+    echo "📦 Creating virtual environment..."
     python3 -m venv .venv
-    source .venv/bin/activate
 fi
+source .venv/bin/activate
 
 # ----------------------
-# 2. Install dependencies only if missing
+# 2️⃣ Install dependencies if missing (use wheels for heavy packages)
 # ----------------------
 REQUIRED_PKG="coinbase-advanced-py"
-PKG_OK=$(python -m pip show $REQUIRED_PKG | grep Version)
-if [ "" = "$PKG_OK" ]; then
+PKG_OK=$(.venv/bin/python -m pip show $REQUIRED_PKG | grep Version)
+
+if [ -z "$PKG_OK" ]; then
     echo "📦 Installing dependencies..."
-    pip install --upgrade pip
-    pip install -r requirements.txt
+    .venv/bin/python -m pip install --upgrade pip wheel setuptools
+
+    # Pre-install heavy packages from wheels to avoid long builds
+    .venv/bin/python -m pip install numpy pandas cryptography
+
+    # Install the rest of your requirements
+    .venv/bin/python -m pip install -r requirements.txt --no-deps
 else
     echo "✅ Dependencies already installed"
 fi
 
 # ----------------------
-# 3. Debug info (optional)
+# 3️⃣ Debug info
 # ----------------------
-echo "🟢 Python executable being used: $(which python)"
-echo "🟢 Pip executable being used: $(which pip)"
-python -m pip show coinbase-advanced-py
+echo "🟢 Python executable: $(which python)"
+.venv/bin/python -m pip show coinbase-advanced-py
 
 # ----------------------
-# 4. Run the bot using the venv Python explicitly
+# 4️⃣ Run Nija bot explicitly using venv Python
 # ----------------------
+echo "🚀 Starting Nija Trading Bot..."
 .venv/bin/python nija_bot.py
