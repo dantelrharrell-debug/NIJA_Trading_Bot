@@ -1,58 +1,37 @@
 #!/bin/bash
-set -e  # exit on error
+set -euo pipefail  # exit on error, treat unset vars as errors
 
 echo "🟢 Activating venv..."
-source /opt/render/project/src/.venv/bin/activate
-
-echo "🟢 Checking installed packages..."
-pip list
-
-echo "🟢 Starting Nija Bot..."
-python3 nija_bot.py
-
-#!/bin/bash
-# start.sh -- debug-first then run bot
-
-set -euo pipefail
-
-# 1) ensure venv
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
-fi
+source .venv/bin/activate
 
 VENV_PY=".venv/bin/python"
 VENV_PIP=".venv/bin/pip"
 
-# 2) install deps (safe - pip will skip already satisfied)
+# Ensure dependencies
 $VENV_PY -m pip install --upgrade pip
 $VENV_PIP install -r requirements.txt
 
-# 3) basic debug info
+# Debug info
 echo "🟢 Using Python: $($VENV_PY -V)"
 echo "🟢 Pip: $($VENV_PIP -V)"
-echo "🟢 coinbase-advanced-py info (pip):"
 $VENV_PY -m pip show coinbase-advanced-py || true
 
-# 4) Diagnostic: list site-packages + try import candidates (THIS MUST RUN BEFORE BOT)
+# Diagnostic: check packages and imports
 $VENV_PY - <<'PY'
 import sys, os, pkgutil, importlib, importlib.metadata
 print("----- PYTHON -----")
-print(sys.executable)
-print(sys.version)
-# site-packages paths
+print(sys.executable, sys.version)
 sp = [p for p in sys.path if "site-packages" in p]
 print("SITE-PACKAGES:", sp)
 for p in sp:
     try:
-        print("\n--- listing:", p)
         items = sorted([n for n in os.listdir(p) if "coinbase" in n.lower() or "coinbase_advanced" in n.lower()])
         for it in items[:200]:
             print("  ", it)
     except Exception as e:
         print("  (list error)", e)
 
-# pkgutil scan
-print("\n--- pkgutil scan for coinbase modules ---")
+print("\n--- pkgutil scan ---")
 mods=[]
 for p in sp:
     try:
@@ -61,16 +40,6 @@ for p in sp:
         pass
 print(sorted(set(mods)))
 
-# metadata: distribution top-level packages (if available)
-print("\n--- importlib.metadata top-level (distribution coinbase-advanced-py) ---")
-try:
-    dist = importlib.metadata.distribution("coinbase-advanced-py")
-    top = dist.read_text("top_level.txt")
-    print("top_level.txt:", repr(top))
-except Exception as e:
-    print("metadata error:", type(e).__name__, e)
-
-# Try imports with common candidate names
 print("\n--- import attempts ---")
 candidates = [
     "coinbase_advanced_py",
@@ -88,6 +57,12 @@ for name in candidates:
         print("IMPORT FAIL ->", name, ":", type(e).__name__, e)
 PY
 
-# 5) If diagnostic passed, run the bot (non-exec so logs continue)
-echo "🚀 Starting Nija Trading Bot..."
-.venv/bin/python nija_bot.py
+# PEM setup for live trading (optional)
+if [ -n "${COINBASE_PEM:-}" ]; then
+    echo "$COINBASE_PEM" > /tmp/my_coinbase_key.pem
+    echo "✅ PEM written to /tmp/my_coinbase_key.pem"
+fi
+
+# Run bot
+echo "🚀 Starting Nija Bot..."
+$VENV_PY nija_bot.py
