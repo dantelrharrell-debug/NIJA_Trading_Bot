@@ -14,20 +14,17 @@ import time
 import json
 
 # -------------------
-# Interpret USE_MOCK strictly
-# Only '1', 'true', 'yes' (case-insensitive) enable mock mode
+# Config
 # -------------------
-_raw = os.getenv("USE_MOCK", "")
-USE_MOCK = _raw.strip().lower() in ("1", "true", "yes")
+USE_MOCK = os.getenv("USE_MOCK", "").strip().lower() in ("1", "true", "yes")
+API_KEY = os.getenv("API_KEY", "")
+API_SECRET = os.getenv("API_SECRET", "")
 
-# -------------------
-# Defaults
-# -------------------
 client = None
 LIVE_TRADING = False
 
 # -------------------
-# Robust Coinbase import + client initialization
+# Coinbase client initialization
 # -------------------
 _coinbase_candidates = [
     "coinbase_advanced_py",
@@ -41,73 +38,58 @@ _coinbase_module = None
 _coinbase_name = None
 
 if not USE_MOCK:
-    for _name in _coinbase_candidates:
+    for name in _coinbase_candidates:
         try:
-            _mod = importlib.import_module(_name)
+            _mod = importlib.import_module(name)
             _coinbase_module = _mod
-            _coinbase_name = _name
-            print(f"✅ Imported Coinbase module using '{_name}'")
+            _coinbase_name = name
+            print(f"✅ Imported Coinbase module using '{name}'")
             break
         except Exception:
-            pass  # try next candidate
+            continue
 
     if _coinbase_module is None:
-        print("❌ Coinbase module not found under tried names:", _coinbase_candidates)
+        print("❌ No Coinbase module found. Falling back to mock.")
         USE_MOCK = True
 
-if not USE_MOCK and _coinbase_module:
-    API_KEY = os.getenv("API_KEY", "")
-    API_SECRET = os.getenv("API_SECRET", "")
+# Initialize live client
+if not USE_MOCK and _coinbase_module and API_KEY and API_SECRET:
+    try:
+        # Try standard constructors
+        for ctor in ("Client", "ClientV2", "CoinbaseClient"):
+            if hasattr(_coinbase_module, ctor):
+                client = getattr(_coinbase_module, ctor)(API_KEY, API_SECRET)
+                LIVE_TRADING = True
+                print(f"🚀 Initialized live client via {_coinbase_name}.{ctor}()")
+                break
 
-    if not API_KEY or not API_SECRET:
-        print("⚠️ API_KEY or API_SECRET not set — cannot initialize live client.")
+        # Try factory function
+        if client is None and hasattr(_coinbase_module, "create_client"):
+            client = _coinbase_module.create_client(API_KEY, API_SECRET)
+            LIVE_TRADING = True
+            print(f"🚀 Initialized live client via {_coinbase_name}.create_client()")
+
+        # Try calling module directly
+        if client is None and callable(_coinbase_module):
+            client = _coinbase_module(API_KEY, API_SECRET)
+            LIVE_TRADING = True
+            print(f"🚀 Initialized live client by calling {_coinbase_name}()")
+
+        if client is None:
+            raise RuntimeError("No usable constructor found for Coinbase client.")
+
+    except Exception as e:
+        print("❌ Failed to initialize live Coinbase client:", e)
         USE_MOCK = True
-    else:
-        try:
-            # Try common constructors
-            for ctor in ("Client", "ClientV2", "CoinbaseClient"):
-                if hasattr(_coinbase_module, ctor):
-                    try:
-                        client = getattr(_coinbase_module, ctor)(API_KEY, API_SECRET)
-                        LIVE_TRADING = True
-                        print(f"🚀 Initialized client via {_coinbase_name}.{ctor}()")
-                        break
-                    except Exception as e:
-                        print(f"⚠️ {_coinbase_name}.{ctor}() raised:", e)
-
-            # Try factory function
-            if client is None and hasattr(_coinbase_module, "create_client"):
-                try:
-                    client = _coinbase_module.create_client(API_KEY, API_SECRET)
-                    LIVE_TRADING = True
-                    print(f"🚀 Initialized client via {_coinbase_name}.create_client()")
-                except Exception as e:
-                    print(f"⚠️ {_coinbase_name}.create_client() raised:", e)
-
-            # Last attempt: module callable
-            if client is None and callable(_coinbase_module):
-                try:
-                    client = _coinbase_module(API_KEY, API_SECRET)
-                    LIVE_TRADING = True
-                    print(f"🚀 Initialized client by calling module {_coinbase_name}()")
-                except Exception as e:
-                    print(f"⚠️ Calling {_coinbase_name}() raised:", e)
-
-            if client is None:
-                raise RuntimeError("Could not initialize client from imported module (no usable constructor)")
-
-        except Exception as exc:
-            print("❌ Failed to initialize live Coinbase client:", exc)
-            traceback.print_exc()
-            USE_MOCK = True
+        client = None
 
 # -------------------
-# MockClient for fallback / testing
+# Fallback MockClient
 # -------------------
 if USE_MOCK or client is None:
     class MockClient:
         def __init__(self):
-            self.balances = {'USD': 10000.0, 'BTC': 0.05, 'ETH': 0.3}
+            self.balances = {"USD": 10000.0, "BTC": 0.05, "ETH": 0.3}
             print("🧪 MockClient initialized with balances:", self.balances)
 
         def get_account_balances(self):
@@ -122,7 +104,7 @@ if USE_MOCK or client is None:
     print("⚠️ Running in mock mode — Coinbase client not connected.")
 
 # -------------------
-# Final state summary
+# Status summary
 # -------------------
 if LIVE_TRADING:
     print(f"🟢 Live Coinbase client ready. LIVE_TRADING={LIVE_TRADING}")
@@ -133,3 +115,59 @@ else:
 # Flask app
 # -------------------
 app = Flask(__name__)
+
+# -------------------
+# Routes
+# -------------------
+@app.route("/balances", methods=["GET"])
+def get_balances():
+    try:
+        balances = client.get_account_balances()
+        return jsonify(balances)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/order", methods=["POST"])
+def place_order_route():
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "Empty payload"}), 400
+
+        symbol = data.get("symbol")
+        side = data.get("side")
+        size = data.get("size")
+        order_type = data.get("order_type", "market")
+        price = data.get("price", None)
+
+        if not symbol or not side or not size:
+            return jsonify({"error": "Missing required fields: symbol, side, size"}), 400
+
+        # Optional: validate strategy
+        strategy = data.get("strategy")
+        if strategy == "VWAP+RSI":
+            # Placeholder for strategy validation
+            pass
+
+        result = client.place_order(
+            symbol=symbol,
+            side=side,
+            size=size,
+            price=price,
+            order_type=order_type
+        )
+
+        return jsonify({"status": "success", "order": result})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# -------------------
+# Start Flask server
+# -------------------
+if __name__ == "__main__":
+    print("🚀 Starting NIJA Bot...")
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
