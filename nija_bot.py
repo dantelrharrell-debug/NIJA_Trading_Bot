@@ -1,80 +1,71 @@
+#!/usr/bin/env python3
 import os
-import coinbase as cb  # correct import for coinbase-advanced-py
-#!/bin/bash
-set -euo pipefail
-
-# -----------------------
-# Activate virtualenv
-# -----------------------
-echo "🟢 Activating venv..."
-source /opt/render/project/src/.venv/bin/activate
-
-VENV_PY=".venv/bin/python"
-VENV_PIP=".venv/bin/pip"
-
-# -----------------------
-# Install dependencies
-# -----------------------
-echo "🟢 Installing dependencies..."
-$VENV_PY -m pip install --upgrade pip
-$VENV_PIP install -r requirements.txt
-
-# -----------------------
-# Write PEM file from env
-# -----------------------
-PEM_PATH="/tmp/my_coinbase_key.pem"
-
-if [[ -n "${COINBASE_PEM:-}" ]]; then
-    echo "🟢 Writing PEM file..."
-    echo "$COINBASE_PEM" > "$PEM_PATH"
-    echo "✅ PEM written to $PEM_PATH"
-else
-    echo "⚠️ COINBASE_PEM not set. Bot will run with mock balances."
-fi
-
-# -----------------------
-# Start the bot
-# -----------------------
-echo "🚀 Starting Nija Bot..."
-$VENV_PY nija_bot.py
+import sys
+from flask import Flask
 
 # -------------------------------
-# Coinbase PEM / Live trading setup
+# Coinbase Advanced API setup
 # -------------------------------
+try:
+    from coinbase_advanced_py import CoinbaseAdvancedClient
+    COINBASE_AVAILABLE = True
+except ModuleNotFoundError:
+    print("❌ coinbase_advanced_py not installed, using mock client")
+    COINBASE_AVAILABLE = False
 
-# Path where PEM will be temporarily written
 PEM_PATH = "/tmp/my_coinbase_key.pem"
-
-# Fetch PEM content from environment variable
 PEM_CONTENT = os.getenv("COINBASE_PEM")
 
-if PEM_CONTENT:
-    # Write PEM content to temporary file
+client = None
+LIVE_TRADING = False
+
+if COINBASE_AVAILABLE and PEM_CONTENT:
+    # Write PEM file
     with open(PEM_PATH, "w") as f:
         f.write(PEM_CONTENT)
     print(f"✅ PEM written to {PEM_PATH}")
 
     try:
-        # Initialize real Coinbase client
-        client = cb.Client(api_key_path=PEM_PATH)
+        client = CoinbaseAdvancedClient(pem_file=PEM_PATH)
         LIVE_TRADING = True
         print("✅ Live Coinbase client initialized")
     except Exception as e:
         print(f"❌ Failed to initialize Coinbase client: {e}")
-        print("⚠️ Falling back to MockClient")
-        from mock_client import MockClient  # your existing mock
-        client = MockClient()
-        LIVE_TRADING = False
+        client = None
 else:
-    # PEM not found → fallback to mock client
-    print("⚠️ COINBASE_PEM not set, using MockClient")
-    from mock_client import MockClient  # your existing mock
-    client = MockClient()
-    LIVE_TRADING = False
+    if not PEM_CONTENT:
+        print("⚠️ COINBASE_PEM environment variable not set")
+    client = None
 
 # -------------------------------
-# Example: check balances
+# Balances (live or mock)
 # -------------------------------
-balances = client.get_account_balances()
+if LIVE_TRADING and client:
+    try:
+        balances = client.get_account_balances()
+    except Exception as e:
+        print(f"⚠️ Failed to fetch live balances: {e}")
+        balances = {"USD": 10000.0, "BTC": 0.05}
+else:
+    print("⚠️ Using mock balances")
+    balances = {"USD": 10000.0, "BTC": 0.05}
+
 print(f"💰 Starting balances: {balances}")
 print(f"🔒 LIVE_TRADING = {LIVE_TRADING}")
+
+# -------------------------------
+# Flask App Setup
+# -------------------------------
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "🚀 Nija Trading Bot is running!"
+
+# -------------------------------
+# Run bot logic here (after this block)
+# -------------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🚀 Starting NIJA Bot Flask server on port {port}...")
+    app.run(host="0.0.0.0", port=port)
