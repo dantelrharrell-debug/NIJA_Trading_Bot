@@ -12,10 +12,17 @@ else
 fi
 
 # ----------------------
-# 2. Upgrade pip & install dependencies
+# 2. Install dependencies only if missing
 # ----------------------
-pip install --upgrade pip
-pip install -r requirements.txt
+REQUIRED_PKG="coinbase-advanced-py"
+PKG_OK=$(python -m pip show $REQUIRED_PKG | grep Version)
+if [ "" = "$PKG_OK" ]; then
+    echo "📦 Installing dependencies..."
+    pip install --upgrade pip
+    pip install -r requirements.txt
+else
+    echo "✅ Dependencies already installed"
+fi
 
 # ----------------------
 # 3. Debug info (optional)
