@@ -1,88 +1,76 @@
 #!/usr/bin/env python3
-# nija_bot.py — Coinbase REST client with safe PEM handling + Flask
-
 import os
+import sys
+from pathlib import Path
 import traceback
-from flask import Flask, jsonify
 
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")  # path to PEM file
+import coinbase
 
-LIVE_TRADING = False
-client = None
+# ----------------------
+# Load API credentials
+# ----------------------
+API_KEY = os.getenv("API_KEY")  # Your Coinbase API key (string)
+API_SECRET = os.getenv("API_SECRET")  # Path to your PEM file
 
-def debug(msg):
-    print("DEBUG:", msg)
+# Check credentials
+if not API_KEY or not API_SECRET:
+    raise SystemExit("❌ API_KEY or API_SECRET not set")
 
-# ------------------------
-# Check PEM file
-# ------------------------
-if API_SECRET:
-    if not os.path.isfile(API_SECRET):
-        debug(f"❌ PEM file not found at {API_SECRET}")
-        API_SECRET = None
-    else:
-        debug(f"✅ PEM file found at {API_SECRET}")
-else:
-    debug("❌ API_SECRET not set")
-
-# ------------------------
-# Attempt Coinbase REST client
-# ------------------------
-try:
-    if API_KEY and API_SECRET:
-        from coinbase.rest import RESTClient
-        debug("Attempting RESTClient instantiation...")
-        client = RESTClient(API_KEY, API_SECRET)
-        LIVE_TRADING = True
-        debug("✅ RESTClient instantiated. LIVE_TRADING=True")
-except Exception as e:
-    debug(f"RESTClient failed: {type(e).__name__} {e}")
-    debug(traceback.format_exc())
-    client = None
+# Ensure PEM file exists
+pem_path = Path(API_SECRET)
+if not pem_path.is_file():
+    print(f"❌ PEM file not found at {pem_path}")
+    print("⚠️ Falling back to MockClient")
     LIVE_TRADING = False
+else:
+    LIVE_TRADING = True
 
-# ------------------------
-# Fallback to MockClient
-# ------------------------
-if not LIVE_TRADING or client is None:
-    debug("⚠️ Falling back to MockClient")
+# ----------------------
+# Initialize Coinbase client
+# ----------------------
+try:
+    if LIVE_TRADING:
+        from coinbase.rest import RESTClient
+        client = RESTClient(API_KEY, str(pem_path))
+        print("✅ RESTClient initialized. LIVE_TRADING =", LIVE_TRADING)
+    else:
+        # Fallback MockClient
+        class MockClient:
+            def get_account_balances(self):
+                return {"USD": 10000.0, "BTC": 0.05}
+
+        client = MockClient()
+        print("⚠️ Using MockClient. LIVE_TRADING =", LIVE_TRADING)
+except Exception as e:
+    print("❌ Error initializing RESTClient:")
+    traceback.print_exc()
+    print("⚠️ Falling back to MockClient")
+    LIVE_TRADING = False
     class MockClient:
         def get_account_balances(self):
             return {"USD": 10000.0, "BTC": 0.05}
-
-        def place_order(self, *a, **k):
-            raise RuntimeError("DRY RUN: MockClient refuses to place orders")
-
     client = MockClient()
 
-# ------------------------
-# Read balances
-# ------------------------
+# ----------------------
+# Check starting balances
+# ----------------------
 try:
     balances = client.get_account_balances()
 except Exception as e:
     balances = {"error": str(e)}
 
-print(f"💰 Starting balances: {balances}")
-print(f"🔒 LIVE_TRADING = {LIVE_TRADING}")
+print("💰 Starting balances:", balances)
 
-# ------------------------
-# Flask setup
-# ------------------------
+# ----------------------
+# Flask server start
+# ----------------------
+from flask import Flask
 app = Flask("nija_bot")
 
 @app.route("/")
 def home():
-    return jsonify({
-        "status": "NIJA Bot is running!",
-        "LIVE_TRADING": LIVE_TRADING,
-        "balances": balances
-    })
+    return "NIJA Trading Bot is live!"
 
-# ------------------------
-# Start Flask server
-# ------------------------
 if __name__ == "__main__":
     print("🚀 Starting NIJA Bot Flask server...")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)), debug=False)
