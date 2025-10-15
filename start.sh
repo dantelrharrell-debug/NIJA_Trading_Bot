@@ -1,3 +1,12 @@
+#!/bin/bash
+# Activate venv if it exists
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
+# Run the bot
+python3 nija_bot.py
+
 #!/usr/bin/env bash
 # ---------------------------
 # Nija Bot start script
