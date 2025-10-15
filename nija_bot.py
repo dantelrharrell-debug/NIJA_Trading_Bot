@@ -1,3 +1,12 @@
+import sys
+import os
+
+# Prioritize virtualenv site-packages
+VENV_PATH = os.path.join(os.getcwd(), ".venv", "lib", "python3.13", "site-packages")
+if VENV_PATH not in sys.path:
+    sys.path.insert(0, VENV_PATH)
+    print(f"Added virtualenv site-packages to sys.path: {VENV_PATH}")
+
 #!/usr/bin/env python3
 """
 NIJA Trading Bot - Coinbase Live Check
