@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+import os
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = Flask(__name__)
+
+WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
+
 # ---------- Coinbase import & client setup ----------
 # (paste here the code I gave you earlier that sets up COINBASE_CLIENT)
 # ---------- END Coinbase setup ----------
