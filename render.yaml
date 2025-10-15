@@ -7,7 +7,6 @@ services:
       python3 -m venv .venv
       source .venv/bin/activate
       pip install --upgrade pip
-      pip uninstall -y coinbase-advanced-py
       pip install --no-cache-dir coinbase-advanced-py==1.8.2
       pip install --no-cache-dir -r requirements.txt
     startCommand: |
