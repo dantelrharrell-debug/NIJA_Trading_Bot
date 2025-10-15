@@ -25,3 +25,5 @@ pip show coinbase-advanced-py || echo "❌ coinbase_advanced_py not found!"
 # 5️⃣ Run bot
 echo "🚀 Starting Nija Trading Bot..."
 exec python nija_bot.py
+
+exec .venv/bin/python nija_bot.py
