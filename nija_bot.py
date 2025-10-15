@@ -1,119 +1,113 @@
 #!/usr/bin/env python3
-# nija_bot.py — Coinbase Advanced REST client + safe Mock fallback
+# nija_bot.py — robust Coinbase client autodetector + safe fallback
 
 import os
-import time
-import hmac
-import json
-import hashlib
-import requests
+import importlib
+import inspect
+import traceback
 from flask import Flask, jsonify
 
-# ----------------------
-# Load environment variables
-# ----------------------
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-API_PASSPHRASE = os.getenv("API_PASSPHRASE")  # optional depending on key type
+
 LIVE_TRADING = False
+client = None
 
-BASE_URL = "https://api.exchange.coinbase.com"  # REST base for Advanced API
-
-# ----------------------
-# Debug function
-# ----------------------
 def debug(msg):
     print("DEBUG:", msg)
 
 # ----------------------
-# Simple REST client
+# MockClient fallback
 # ----------------------
-class CoinbaseRESTClient:
-    def __init__(self, api_key, api_secret, api_passphrase=None, dry_run=True):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.api_passphrase = api_passphrase
-        self.dry_run = dry_run
-
-    def _get_headers(self, method, path, body=""):
-        timestamp = str(int(time.time()))
-        message = timestamp + method + path + body
-        secret_bytes = self.api_secret.encode("utf-8")
-        signature = hmac.new(secret_bytes, message.encode("utf-8"), hashlib.sha256).hexdigest()
-        headers = {
-            "CB-ACCESS-KEY": self.api_key,
-            "CB-ACCESS-SIGN": signature,
-            "CB-ACCESS-TIMESTAMP": timestamp,
-            "Content-Type": "application/json"
-        }
-        if self.api_passphrase:
-            headers["CB-ACCESS-PASSPHRASE"] = self.api_passphrase
-        return headers
-
-    def _request(self, method, path, body=""):
-        url = BASE_URL + path
-        headers = self._get_headers(method, path, body)
-        if self.dry_run:
-            debug(f"DRY_RUN {_request.__name__}: {method} {url} body={body}")
-            return {}
-        try:
-            if method == "GET":
-                r = requests.get(url, headers=headers)
-            elif method == "POST":
-                r = requests.post(url, headers=headers, data=body)
-            else:
-                raise ValueError("Unsupported method")
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:
-            debug(f"REST request failed: {type(e).__name__} {e}")
-            return {}
-
-    # ----------------------
-    # Public API methods
-    # ----------------------
+class MockClient:
     def get_account_balances(self):
-        return self._request("GET", "/accounts")
-
-    def place_order(self, product_id="BTC-USD", side="buy", size="0.001", price=None, order_type="limit"):
-        if self.dry_run:
-            debug(f"DRY_RUN place_order: {side} {size} {product_id} price={price}")
-            return {"status": "dry_run"}
-        body = {
-            "type": order_type,
-            "side": side,
-            "product_id": product_id,
-            "size": size
-        }
-        if price and order_type == "limit":
-            body["price"] = str(price)
-        return self._request("POST", "/orders", json.dumps(body))
+        return {'USD': 10000.0, 'BTC': 0.05}
+    def place_order(self, *a, **k):
+        raise RuntimeError("DRY RUN: MockClient refuses to place orders")
 
 # ----------------------
-# Initialize client
+# Coinbase detection + client init
 # ----------------------
-if API_KEY and API_SECRET:
-    client = CoinbaseRESTClient(API_KEY, API_SECRET, api_passphrase=API_PASSPHRASE, dry_run=True)
-    LIVE_TRADING = True
-    debug("✅ REST client initialized (dry_run=True by default)")
-else:
-    debug("❌ No API credentials found; using MockClient")
+def find_coinbase_module():
+    try:
+        m = importlib.import_module("coinbase")
+        debug(f"imported module -> {m.__name__}")
+        return m
+    except Exception as e:
+        debug(f"failed to import 'coinbase': {e}")
+        return None
 
-# ----------------------
-# Fallback MockClient
-# ----------------------
+def collect_candidates(cb_mod):
+    candidates = []
+    for sub in ("rest", "websocket", "api_base", "client"):
+        try:
+            sm = importlib.import_module(f"coinbase.{sub}")
+            debug(f"found submodule coinbase.{sub}")
+            for name, obj in inspect.getmembers(sm, lambda o: inspect.isclass(o) or inspect.isfunction(o)):
+                lowered = name.lower()
+                if any(k in lowered for k in ("client", "rest", "api", "ws", "websocket")):
+                    candidates.append((f"coinbase.{sub}.{name}", obj))
+        except Exception:
+            pass
+    try:
+        for name, obj in inspect.getmembers(cb_mod, lambda o: inspect.isclass(o) or inspect.isfunction(o)):
+            lowered = name.lower()
+            if any(k in lowered for k in ("client", "rest", "api")):
+                candidates.append((f"coinbase.{name}", obj))
+    except Exception:
+        pass
+    # dedupe
+    seen = {}
+    for fullname, obj in candidates:
+        if fullname not in seen:
+            seen[fullname] = obj
+    return list(seen.items())
+
+def try_instantiate(candidate_obj, api_key, api_secret):
+    if inspect.isfunction(candidate_obj):
+        for args in [(api_key, api_secret), ()]:
+            try:
+                debug(f"trying function {candidate_obj.__name__} with args {args}")
+                return candidate_obj(*args)
+            except Exception as e:
+                debug(f"function call failed: {type(e).__name__} {e}")
+    if inspect.isclass(candidate_obj):
+        attempts = [
+            ((api_key, api_secret), {}),
+            ((), {"api_key": api_key, "api_secret": api_secret}),
+            ((), {"key": api_key, "secret": api_secret}),
+            ((), {"client_id": api_key, "client_secret": api_secret}),
+        ]
+        for args, kwargs in attempts:
+            try:
+                debug(f"trying class {candidate_obj.__name__} with args={args} kwargs={list(kwargs.keys())}")
+                return candidate_obj(*args, **kwargs)
+            except Exception as e:
+                debug(f"construction failed: {type(e).__name__} {e}")
+    raise RuntimeError("All instantiation attempts failed for candidate.")
+
+cb = find_coinbase_module()
+if cb and API_KEY and API_SECRET:
+    candidates = collect_candidates(cb)
+    debug(f"candidates found ({len(candidates)}): {[name for name, _ in candidates]}")
+    for fullname, obj in candidates:
+        try:
+            inst = try_instantiate(obj, API_KEY, API_SECRET)
+            if inst and (hasattr(inst, "get_account_balances") or hasattr(inst, "get_accounts") or hasattr(inst, "list_accounts")):
+                client = inst
+                LIVE_TRADING = True
+                debug(f"SUCCESS: instantiated client from {fullname}. LIVE_TRADING=True")
+                break
+        except Exception as e:
+            debug(f"candidate {fullname} failed: {type(e).__name__} {e}")
+            debug(traceback.format_exc())
+
 if not LIVE_TRADING or client is None:
-    class MockClient:
-        def get_account_balances(self):
-            return {'USD': 10000.0, 'BTC': 0.05}
-        def place_order(self, *a, **k):
-            debug(f"DRY_RUN MockClient place_order args={a} kwargs={k}")
-            return {"status": "dry_run"}
+    debug("WARN: falling back to MockClient (no live Coinbase client available)")
     client = MockClient()
-    LIVE_TRADING = False
 
 # ----------------------
-# Print starting balances
+# Startup balances (safe)
 # ----------------------
 try:
     balances = client.get_account_balances()
