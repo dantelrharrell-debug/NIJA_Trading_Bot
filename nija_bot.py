@@ -1,22 +1,91 @@
-import sys
-# adjust this path to match your Render virtualenv location
-sys.path.insert(0, "/opt/render/project/src/.venv/lib/python3.13/site-packages")
-
 #!/usr/bin/env python3
-from dotenv import load_dotenv
-load_dotenv()
-
 """
 nija_bot.py
 Robust Coinbase autodetector + safe fallback for Render.
-Reads credentials from:
- - COINBASE_PEM  (PEM text, preferred)
- - or API_KEY and API_SECRET (legacy)
+Ensures coinbase-advanced-py is loaded from virtualenv and handles PEM credentials.
 """
 
 import os
+import sys
 import traceback
-from flask import Flask, jsonify
+
+# -------------------------------------------------
+# Ensure Render virtualenv packages are on sys.path
+# -------------------------------------------------
+VENV_SITE_PACKAGES = "/opt/render/project/src/.venv/lib/python3.13/site-packages"
+if VENV_SITE_PACKAGES not in sys.path:
+    sys.path.insert(0, VENV_SITE_PACKAGES)
+
+# -------------------------------------------------
+# Load environment variables from .env (if present)
+# -------------------------------------------------
+from dotenv import load_dotenv
+load_dotenv()
+
+# -------------------------------------------------
+# Attempt to import coinbase_advanced_py
+# -------------------------------------------------
+USE_LIVE = True
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py imported successfully")
+except Exception as e:
+    print("❌ coinbase_advanced_py import failed:", e)
+    USE_LIVE = False
+
+# -------------------------------------------------
+# Fallback legacy Coinbase package (optional)
+# -------------------------------------------------
+if not USE_LIVE:
+    try:
+        import coinbase
+        print("ℹ️ legacy 'coinbase' package import OK")
+    except Exception as e:
+        print("❌ legacy 'coinbase' import failed:", e)
+
+# -------------------------------------------------
+# Prepare PEM file for Coinbase authentication
+# -------------------------------------------------
+PEM_B64 = os.getenv("API_PEM_B64", "")
+PEM_PATH = "/tmp/my_coinbase_key.pem"
+
+if PEM_B64:
+    with open(PEM_PATH, "w") as f:
+        f.write(PEM_B64)
+    print(f"✅ PEM written to {PEM_PATH}")
+else:
+    print("⚠️ API_PEM_B64 not found in environment variables")
+
+# -------------------------------------------------
+# Initialize Coinbase client or fallback to Mock
+# -------------------------------------------------
+LIVE_TRADING = False
+client = None
+
+if USE_LIVE and PEM_B64:
+    try:
+        client = cb.CoinbaseAdvancedAPIClient(
+            pem_path=PEM_PATH,
+            api_key=os.getenv("API_KEY"),
+            api_secret=os.getenv("API_SECRET"),
+            passphrase=os.getenv("API_PASSPHRASE")
+        )
+        LIVE_TRADING = True
+        print("🚀 Live Coinbase client initialized")
+    except Exception as e:
+        print("⚠️ Failed to initialize live Coinbase client:", e)
+        USE_LIVE = False
+
+if not USE_LIVE:
+    class MockClient:
+        def __init__(self):
+            self.balances = {"USD": 10000.0, "BTC": 0.05}
+
+        def get_balances(self):
+            return self.balances
+
+    client = MockClient()
+    print("⚠️ Using MockClient (no live trading)")
 
 LIVE_TRADING = False
 client = None
