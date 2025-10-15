@@ -1,5 +1,41 @@
 #!/usr/bin/env python3
 """
+Debug block to diagnose coinbase-advanced-py import issues on Render
+"""
+
+import sys
+import os
+import subprocess
+
+print("🛠 Python executable:", sys.executable)
+print("🛠 sys.path:")
+for p in sys.path:
+    print("   ", p)
+
+# Show which packages are installed in the active environment
+try:
+    import pkg_resources
+    installed = sorted([f"{p.key}=={p.version}" for p in pkg_resources.working_set])
+    print("🛠 Installed packages in this environment:")
+    for pkg in installed:
+        print("   ", pkg)
+except Exception as e:
+    print("⚠️ Failed to list installed packages:", e)
+
+# Show if the coinbase_advanced_py package exists on disk
+venv_site = "/opt/render/project/src/.venv/lib/python3.13/site-packages"
+package_path = os.path.join(venv_site, "coinbase_advanced_py")
+print(f"🛠 Checking if coinbase_advanced_py exists at {package_path}: ", os.path.exists(package_path))
+
+# Optional: test direct import in a subprocess for isolation
+try:
+    subprocess.check_call([sys.executable, "-c", "import coinbase_advanced_py"], shell=False)
+    print("✅ Subprocess import test succeeded")
+except subprocess.CalledProcessError:
+    print("❌ Subprocess import test failed")
+
+#!/usr/bin/env python3
+"""
 nija_bot.py
 NIJA Bot: Robust Coinbase autodetector + safe fallback
 """
