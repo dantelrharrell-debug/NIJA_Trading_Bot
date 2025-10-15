@@ -1,71 +1,64 @@
-#!/usr/bin/env python3
 import os
 import sys
-from flask import Flask
+
+LIVE_TRADING = False
+client = None
 
 # -------------------------------
-# Coinbase Advanced API setup
+# Coinbase PEM / Live trading setup
 # -------------------------------
 try:
     from coinbase_advanced_py import CoinbaseAdvancedClient
-    COINBASE_AVAILABLE = True
 except ModuleNotFoundError:
-    print("❌ coinbase_advanced_py not installed, using mock client")
-    COINBASE_AVAILABLE = False
+    print("❌ coinbase_advanced_py not installed. Using MockClient.")
+    CoinbaseAdvancedClient = None
 
 PEM_PATH = "/tmp/my_coinbase_key.pem"
 PEM_CONTENT = os.getenv("COINBASE_PEM")
 
-client = None
-LIVE_TRADING = False
-
-if COINBASE_AVAILABLE and PEM_CONTENT:
-    # Write PEM file
+if PEM_CONTENT:
     with open(PEM_PATH, "w") as f:
         f.write(PEM_CONTENT)
     print(f"✅ PEM written to {PEM_PATH}")
 
-    try:
-        client = CoinbaseAdvancedClient(pem_file=PEM_PATH)
-        LIVE_TRADING = True
-        print("✅ Live Coinbase client initialized")
-    except Exception as e:
-        print(f"❌ Failed to initialize Coinbase client: {e}")
-        client = None
+    if CoinbaseAdvancedClient:
+        try:
+            client = CoinbaseAdvancedClient(pem_file=PEM_PATH)
+            LIVE_TRADING = True
+            print("🟢 ✅ Live Coinbase client initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize Coinbase client: {e}")
+            client = None
 else:
-    if not PEM_CONTENT:
-        print("⚠️ COINBASE_PEM environment variable not set")
-    client = None
+    print("⚠️ COINBASE_PEM not set, using mock balances")
 
 # -------------------------------
-# Balances (live or mock)
+# Balances
 # -------------------------------
 if LIVE_TRADING and client:
     try:
         balances = client.get_account_balances()
+        print(f"💰 Starting balances: {balances}")
     except Exception as e:
-        print(f"⚠️ Failed to fetch live balances: {e}")
+        print(f"❌ Failed to fetch balances: {e}")
+        LIVE_TRADING = False
         balances = {"USD": 10000.0, "BTC": 0.05}
 else:
-    print("⚠️ Using mock balances")
     balances = {"USD": 10000.0, "BTC": 0.05}
-
-print(f"💰 Starting balances: {balances}")
+    if not LIVE_TRADING:
+        print("⚠️ Using mock balances")
 print(f"🔒 LIVE_TRADING = {LIVE_TRADING}")
 
 # -------------------------------
-# Flask App Setup
+# Start your Flask bot
 # -------------------------------
+from flask import Flask
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "🚀 Nija Trading Bot is running!"
+    return "NIJA Bot is running 🔥"
 
-# -------------------------------
-# Run bot logic here (after this block)
-# -------------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    print(f"🚀 Starting NIJA Bot Flask server on port {port}...")
-    app.run(host="0.0.0.0", port=port)
+    print("🚀 Starting NIJA Bot Flask server on port 10000...")
+    app.run(host="0.0.0.0", port=10000)
