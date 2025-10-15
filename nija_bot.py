@@ -30,11 +30,11 @@ LIVE_TRADING = False
 # Robust Coinbase import + client initialization
 # -------------------
 _coinbase_candidates = [
-    "coinbase_advanced_py",   # expected
-    "coinbase_advanced",      # possible alternate
-    "coinbase",               # generic
+    "coinbase_advanced_py",
+    "coinbase_advanced",
+    "coinbase",
     "coinbase_advanced_py_client",
-    "coinbasepro",            # sometimes used by other libs
+    "coinbasepro",
 ]
 
 _coinbase_module = None
@@ -135,54 +135,53 @@ else:
 app = Flask(__name__)
 
 # -------------------
-# Position sizing
+# Routes
 # -------------------
-MIN_PCT = 0.02  # 2%
-MAX_PCT = 0.10  # 10%
+@app.route("/balances", methods=["GET"])
+def get_balances():
+    balances = client.get_account_balances()
+    return jsonify(balances)
 
-def calculate_position_size(account_usd, pct=0.05):
-    return max(account_usd * pct, 0)
-
-# -------------------
-# Trading endpoint for TradingView alerts
-# -------------------
 @app.route("/order", methods=["POST"])
 def place_order_route():
     try:
         data = request.json
+        if not data:
+            return jsonify({"error": "Empty payload"}), 400
+
         symbol = data.get("symbol")
         side = data.get("side")
-        size_pct = data.get("size_pct", 0.05)  # default 5% of account
-        account_balances = client.get_account_balances()
-        account_usd = account_balances.get("USD", 0)
-        size = calculate_position_size(account_usd, size_pct)
-
-        price = data.get("price", None)
+        size = data.get("size")
         order_type = data.get("order_type", "market")
+        price = data.get("price", None)
 
-        result = client.place_order(symbol, side, size, price, order_type)
-        print(f"💰 Executed {side.upper()} {size} {symbol} @ {price if price else 'market'}")
+        if not symbol or not side or not size:
+            return jsonify({"error": "Missing required fields: symbol, side, size"}), 400
+
+        # Optional: validate TradingView strategy if sent
+        strategy = data.get("strategy")
+        if strategy == "VWAP+RSI":
+            # Implement thresholds check if needed
+            pass
+
+        result = client.place_order(
+            symbol=symbol,
+            side=side,
+            size=size,
+            price=price,
+            order_type=order_type
+        )
+
         return jsonify({"status": "success", "order": result})
+
     except Exception as e:
-        print("❌ Error placing order:", e)
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # -------------------
-# Check balances endpoint
-# -------------------
-@app.route("/balances", methods=["GET"])
-def get_balances():
-    try:
-        balances = client.get_account_balances()
-        return jsonify(balances)
-    except Exception as e:
-        print("❌ Error fetching balances:", e)
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# -------------------
-# Start Flask app (threaded)
+# Start Flask app
 # -------------------
 if __name__ == "__main__":
     print("🚀 Starting NIJA Bot...")
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
