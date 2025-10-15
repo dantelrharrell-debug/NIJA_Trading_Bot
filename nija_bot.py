@@ -1,12 +1,7 @@
-python -c "import importlib, sys
-try:
-    importlib.import_module('coinbase_advanced_py'); print('coinbase_advanced_py import OK')
-except Exception as e:
-    print('coinbase_advanced_py import failed:', e)"
-
+#!/usr/bin/env python3
 from dotenv import load_dotenv
 load_dotenv()
-#!/usr/bin/env python3
+
 """
 nija_bot.py
 Robust Coinbase autodetector + safe fallback for Render.
@@ -36,7 +31,6 @@ API_SECRET = os.getenv("API_SECRET")
 # Try coinbase-advanced-py (preferred)
 # ---------------------------
 try:
-    # this package sometimes exposes a high-level client (varies by version)
     from coinbase_advanced_py import CoinbaseAdvancedClient  # type: ignore
     HAVE_ADVANCED = True
     log("DEBUG: coinbase_advanced_py import OK")
@@ -85,18 +79,13 @@ def _init_from_pem():
 
     # 2) Try coinbase.legacy REST clients if available (some libs accept pem path)
     if cb_legacy is not None:
-        # try common constructors if present
         try:
-            # some coinbase/rest clients accept api_key/api_secret; PEM is not always used here
-            # fallback to trying a REST client with PEM path attribute if any
-            rest = None
             if hasattr(cb_legacy, "rest"):
                 rest_mod = getattr(cb_legacy, "rest")
                 for cand in ("RESTClient", "RESTBase", "Client"):
                     if hasattr(rest_mod, cand):
                         cls = getattr(rest_mod, cand)
                         try:
-                            # try init with pem path as kwarg
                             inst = cls(pem_file=pem_path)
                             client = inst
                             LIVE_TRADING = True
@@ -104,7 +93,6 @@ def _init_from_pem():
                             return True
                         except Exception:
                             pass
-            # nothing worked
         except Exception:
             log("DEBUG: legacy coinbase pem init attempts failed")
     return False
@@ -118,7 +106,6 @@ def _init_from_key_secret():
     # Try coinbase_advanced_py first
     if HAVE_ADVANCED and CoinbaseAdvancedClient is not None:
         try:
-            # some versions accept (api_key, api_secret) or named args
             try:
                 client = CoinbaseAdvancedClient(api_key=API_KEY, api_secret=API_SECRET)
             except Exception:
@@ -147,7 +134,9 @@ def _init_from_key_secret():
             log("DEBUG: legacy coinbase key/secret init attempts failed")
     return False
 
-# Try PEM first (preferred)
+# ---------------------------
+# Initialize client
+# ---------------------------
 ok = _init_from_pem()
 if not ok:
     ok = _init_from_key_secret()
@@ -194,7 +183,6 @@ def home():
     })
 
 if __name__ == "__main__":
-    # on Render, PORT may be provided as env var; default to 10000 for local dev
     port = int(os.getenv("PORT", "10000"))
     log(f"🚀 Starting NIJA Bot Flask server on port {port}...")
     app.run(host="0.0.0.0", port=port)
