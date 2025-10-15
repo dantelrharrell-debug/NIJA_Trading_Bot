@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 #!/usr/bin/env python3
 """
 nija_bot.py
