@@ -1,29 +1,81 @@
 #!/bin/bash
-# Render-safe start.sh for Nija bot
+# start.sh -- debug-first then run bot
 
-VENV_DIR=".venv"
+set -euo pipefail
 
-# 1️⃣ Create virtual environment if missing
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
+# 1) ensure venv
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
 fi
 
-# 2️⃣ Activate the virtual environment
-source "$VENV_DIR/bin/activate"
+VENV_PY=".venv/bin/python"
+VENV_PIP=".venv/bin/pip"
 
-# 3️⃣ Upgrade pip & install dependencies if missing
-pip install --upgrade pip
-pip install -r requirements.txt
+# 2) install deps (safe - pip will skip already satisfied)
+$VENV_PY -m pip install --upgrade pip
+$VENV_PIP install -r requirements.txt
 
-# 4️⃣ Debug info
-echo "🟢 Using Python:"
-which python
-python -V
-echo "🟢 Checking coinbase_advanced_py..."
-pip show coinbase-advanced-py || echo "❌ coinbase_advanced_py not found!"
+# 3) basic debug info
+echo "🟢 Using Python: $($VENV_PY -V)"
+echo "🟢 Pip: $($VENV_PIP -V)"
+echo "🟢 coinbase-advanced-py info (pip):"
+$VENV_PY -m pip show coinbase-advanced-py || true
 
-# 5️⃣ Run bot
+# 4) Diagnostic: list site-packages + try import candidates (THIS MUST RUN BEFORE BOT)
+$VENV_PY - <<'PY'
+import sys, os, pkgutil, importlib, importlib.metadata
+print("----- PYTHON -----")
+print(sys.executable)
+print(sys.version)
+# site-packages paths
+sp = [p for p in sys.path if "site-packages" in p]
+print("SITE-PACKAGES:", sp)
+for p in sp:
+    try:
+        print("\n--- listing:", p)
+        items = sorted([n for n in os.listdir(p) if "coinbase" in n.lower() or "coinbase_advanced" in n.lower()])
+        for it in items[:200]:
+            print("  ", it)
+    except Exception as e:
+        print("  (list error)", e)
+
+# pkgutil scan
+print("\n--- pkgutil scan for coinbase modules ---")
+mods=[]
+for p in sp:
+    try:
+        mods += [m.name for m in pkgutil.iter_modules([p]) if "coinbase" in m.name.lower()]
+    except Exception:
+        pass
+print(sorted(set(mods)))
+
+# metadata: distribution top-level packages (if available)
+print("\n--- importlib.metadata top-level (distribution coinbase-advanced-py) ---")
+try:
+    dist = importlib.metadata.distribution("coinbase-advanced-py")
+    top = dist.read_text("top_level.txt")
+    print("top_level.txt:", repr(top))
+except Exception as e:
+    print("metadata error:", type(e).__name__, e)
+
+# Try imports with common candidate names
+print("\n--- import attempts ---")
+candidates = [
+    "coinbase_advanced_py",
+    "coinbase_advanced",
+    "coinbase",
+    "coinbase_advanced_py_client",
+    "coinbase_advanced_py.api",
+    "coinbase.advanced",
+]
+for name in candidates:
+    try:
+        importlib.import_module(name)
+        print("IMPORT OK ->", name)
+    except Exception as e:
+        print("IMPORT FAIL ->", name, ":", type(e).__name__, e)
+PY
+
+# 5) If diagnostic passed, run the bot (non-exec so logs continue)
 echo "🚀 Starting Nija Trading Bot..."
-exec python nija_bot.py
-
-exec .venv/bin/python nija_bot.py
+.venv/bin/python nija_bot.py
