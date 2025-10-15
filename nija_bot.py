@@ -1,3 +1,24 @@
+# nija_bot.py (top)
+import importlib, sys
+
+def get_coinbase_module():
+    # try the obvious names in order
+    candidates = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
+    for name in candidates:
+        try:
+            return importlib.import_module(name)
+        except ModuleNotFoundError:
+            continue
+    raise ModuleNotFoundError("No coinbase-advanced package found; expected one of: " + ", ".join(candidates))
+
+cb = get_coinbase_module()
+print("Using coinbase package:", cb.__name__)
+# Inspect available public names for you to adapt the rest of the code
+print("Public members:", [n for n in dir(cb) if not n.startswith('_')])
+# Optionally: print help or available submodules
+# import pkgutil
+# print([m.name for m in pkgutil.iter_modules(cb.__path__)] if hasattr(cb, "__path__") else "no subpackages")
+
 #!/usr/bin/env python3
 import os
 import coinbase_advanced_py as cb  # ✅ correct import
