@@ -115,6 +115,23 @@ API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 API_PASSPHRASE = os.getenv("API_PASSPHRASE")  # if required
 
+#!/usr/bin/env python3
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ---------------------------
+# Coinbase initialization block (paste here)
+# ---------------------------
+# <your Coinbase block that detects package, creates COINBASE_CLIENT and sets LIVE_TRADING>
+# ---------------------------
+
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+
+# routes that use COINBASE_CLIENT below...
+
 # ---------------------------
 # Determine client
 # ---------------------------
