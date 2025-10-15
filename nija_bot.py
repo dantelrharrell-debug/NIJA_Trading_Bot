@@ -1,6 +1,44 @@
 #!/usr/bin/env python3
 import os
 import sys
+
+# ---------------------------
+# Coinbase import check
+# ---------------------------
+try:
+    import coinbase_advanced_py as cb
+    coinbase_client = cb
+    print("✅ Imported coinbase_advanced_py")
+except ModuleNotFoundError as e:
+    print("❌ Coinbase import failed:", e)
+    coinbase_client = None  # fallback to mock later
+
+# ---------------------------
+# Optional: debug paths
+# ---------------------------
+print("sys.executable:", sys.executable)
+print("sys.path:", sys.path)
+
+# ---------------------------
+# Environment / config
+# ---------------------------
+from dotenv import load_dotenv
+load_dotenv()
+
+USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
+if coinbase_client is None:
+    USE_MOCK = True
+
+# ---------------------------
+# Flask setup
+# ---------------------------
+from flask import Flask
+app = Flask(__name__)
+
+# ... rest of your bot code ...
+#!/usr/bin/env python3
+import os
+import sys
 import traceback
 from flask import Flask
 
