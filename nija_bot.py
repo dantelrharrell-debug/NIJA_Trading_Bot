@@ -10,7 +10,7 @@ client = None
 try:
     from coinbase_advanced_py import CoinbaseAdvancedClient
 except ModuleNotFoundError:
-    print("❌ coinbase_advanced_py not installed. Using MockClient.")
+    print("❌ coinbase_advanced_py not installed. Using mock balances.")
     CoinbaseAdvancedClient = None
 
 PEM_PATH = "/tmp/my_coinbase_key.pem"
@@ -50,7 +50,7 @@ else:
 print(f"🔒 LIVE_TRADING = {LIVE_TRADING}")
 
 # -------------------------------
-# Start your Flask bot
+# Start Flask bot
 # -------------------------------
 from flask import Flask
 app = Flask(__name__)
