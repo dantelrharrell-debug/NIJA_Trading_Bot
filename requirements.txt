@@ -1,24 +1,13 @@
-# Core bot dependencies
+# Web server
 flask==3.1.2
 gunicorn==23.0.0
+
+# Environment variables
 python-dotenv
+
+# Coinbase API client
 coinbase-advanced-py==1.8.2
 
-# Data processing
-pandas==2.3.3
+# Data processing (required by bot calculations)
 numpy>=1.26.4
-
-# Optional helpers (let pip pick compatible versions)
-blinker
-click
-itsdangerous
-Jinja2
-MarkupSafe
-werkzeug
-python-dateutil
-pytz
-tzdata
-packaging
-six
-setuptools
-wheel
+pandas==2.3.3
