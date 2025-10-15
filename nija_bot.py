@@ -1,3 +1,35 @@
+# ---------- Coinbase import & client setup ----------
+# (paste here the code I gave you earlier that sets up COINBASE_CLIENT)
+# ---------- END Coinbase setup ----------
+
+
+# ---------- Flask setup + TradingView webhook ----------
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+
+WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
+    if secret != WEBHOOK_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
+    # parse TradingView message
+    action = data.get("action")
+    symbol = data.get("symbol")
+    size = data.get("size")
+
+    # Trigger order (real if LIVE_TRADING=True, else mock)
+    if os.getenv("LIVE_TRADING", "False") == "True" and hasattr(COINBASE_CLIENT, "place_order"):
+        result = COINBASE_CLIENT.place_order(symbol=symbol, side=action, size=size)
+    else:
+        result = {"status": "mock", "action": action, "symbol": symbol, "size": size}
+
+    return jsonify({"ok": True, "result": result})
+# ---------- END Flask webhook ----------
+
 # ---------- BEGIN: Coinbase import & client setup (paste exactly) ----------
 import os
 import logging
