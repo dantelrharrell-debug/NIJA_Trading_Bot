@@ -1,14 +1,7 @@
 services:
   - type: web
     name: nija-trading-bot
-    env: production
+    env: python
     plan: free
-    buildCommand: |
-      python3 -m venv .venv
-      source .venv/bin/activate
-      pip install --upgrade pip
-      pip install --no-cache-dir coinbase-advanced-py==1.8.2
-      pip install --no-cache-dir -r requirements.txt
-    startCommand: |
-      source .venv/bin/activate
-      python main.py
+    buildCommand: "./render-build.sh"
+    startCommand: ".venv/bin/python main.py"
