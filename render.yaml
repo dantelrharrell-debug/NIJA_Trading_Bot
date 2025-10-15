@@ -1,5 +1,5 @@
 services:
-  - type: web  # or "worker" if not an HTTP app
+  - type: web
     name: nija-trading-bot
     env: production
     plan: free
