@@ -1,20 +1,16 @@
-#!/usr/bin/env bash
-set -e
+#!/bin/bash
+set -euo pipefail
 
-echo "🔧 Ensuring coinbase-advanced-py is installed..."
-pip install --upgrade pip setuptools wheel
-pip install --no-cache-dir coinbase-advanced-py==1.8.2
+# create venv (Render often already sets one; this is safe)
+python3 -m venv .venv || true
+. .venv/bin/activate
 
-echo "🚀 Launching NIJA Bot..."
+# upgrade pip and install requirements
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+
+# Export PORT for Flask (Render gives $PORT env var)
+export PORT=${PORT:-10000}
+
+# run bot (keeps using the same command you used before)
 python3 nija_bot.py
-
-#!/usr/bin/env bash
-set -e
-
-echo "🔧 Activating virtualenv and reinstalling coinbase-advanced-py..."
-source .venv/bin/activate
-
-pip uninstall -y coinbase-advanced-py
-pip install --no-cache-dir coinbase-advanced-py==1.8.2
-
-echo "✅ Dependencies ready. Build complete."
