@@ -1,18 +1,29 @@
 #!/bin/bash
-# build.sh
+set -e  # Exit on any error
 
-# Create virtualenv if it doesn't exist
-python3 -m venv .venv
+echo "🚀 Starting build for NIJA Bot..."
 
-# Activate virtualenv
+# 1️⃣ Create virtualenv if it doesn't exist
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+    echo "✅ Virtualenv created"
+fi
+
+# 2️⃣ Activate virtualenv
 source .venv/bin/activate
 
-# Upgrade pip just in case
+# 3️⃣ Upgrade pip
 pip install --upgrade pip
 
-# Install all dependencies
-pip install --no-cache-dir -r requirements.txt
+# 4️⃣ Install dependencies
+if [ -f "requirements.txt" ]; then
+    pip install --no-cache-dir -r requirements.txt
+    echo "✅ Dependencies installed from requirements.txt"
+fi
 
-# Reinstall coinbase-advanced-py to fix module detection
-pip uninstall -y coinbase-advanced-py
+# 5️⃣ Reinstall coinbase-advanced-py to avoid import issues
+pip uninstall -y coinbase-advanced-py || true
 pip install --no-cache-dir coinbase-advanced-py==1.8.2
+echo "✅ coinbase-advanced-py installed"
+
+echo "🚀 Build completed!"
