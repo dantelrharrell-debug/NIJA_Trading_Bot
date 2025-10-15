@@ -1,3 +1,13 @@
+import sys
+print("sys.executable:", sys.executable)
+print("sys.path:", sys.path)
+
+try:
+    import coinbase_advanced_py
+    print("✅ coinbase_advanced_py import OK")
+except Exception as e:
+    print("❌ coinbase_advanced_py import failed:", e)
+
 #!/usr/bin/env python3
 """
 NIJA Trading Bot - Render-ready
