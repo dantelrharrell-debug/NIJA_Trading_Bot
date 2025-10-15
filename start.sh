@@ -1,26 +1,6 @@
 #!/bin/bash
 # start.sh
 
-# Activate the virtual environment
-source /opt/render/project/src/.venv/bin/activate
-
-# Optional: verify python path
-which python
-python -m pip show coinbase-advanced-py
-
-# Run your bot
-python /opt/render/project/src/nija_bot.py
-
-#!/bin/bash
-
-# Activate virtual environment
-source /opt/render/project/src/.venv/bin/activate
-
-# Run the bot with the same Python
-python3 nija_bot.py
-
-#!/bin/bash
-
 # ----------------------
 # 1. Activate virtual environment
 # ----------------------
@@ -38,12 +18,13 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # ----------------------
-# 3. Ensure Python is using the venv
+# 3. Debug info (optional)
 # ----------------------
-echo "🟢 Python executable being used: $(which python3)"
+echo "🟢 Python executable being used: $(which python)"
 echo "🟢 Pip executable being used: $(which pip)"
+python -m pip show coinbase-advanced-py
 
 # ----------------------
 # 4. Run the bot
 # ----------------------
-python3 nija_bot.py
+python nija_bot.py
