@@ -2,59 +2,66 @@
 import os
 from pathlib import Path
 from flask import Flask
-import coinbase_advanced_py as cb
 
-# -------------------------------
-# Load API credentials from ENV
-# -------------------------------
+# -----------------------
+# Load Coinbase credentials
+# -----------------------
 API_KEY = os.getenv("API_KEY")
-API_SECRET_PATH = os.getenv("API_SECRET")  # path to your .pem file
+API_SECRET = os.getenv("API_SECRET")  # Path to PEM file
 
-# -------------------------------
-# Validate credentials
-# -------------------------------
-if not API_KEY or not API_SECRET_PATH:
+# Validate keys
+if not API_KEY or not API_SECRET:
     raise SystemExit("❌ API_KEY or API_SECRET not set")
 
-pem_path = Path(API_SECRET_PATH)
+pem_path = Path(API_SECRET)
 if not pem_path.is_file():
-    raise SystemExit(f"❌ PEM file not found at {pem_path}")
+    print(f"⚠️ PEM file not found at {pem_path}, falling back to MockClient")
+    USE_MOCK = True
+else:
+    USE_MOCK = False
 
-# -------------------------------
-# Initialize Coinbase Advanced client
-# -------------------------------
-try:
-    client = cb.Client(API_KEY, pem_path)
-    print("✅ Coinbase client initialized. LIVE_TRADING=True")
-except Exception as e:
-    raise SystemExit(f"❌ Failed to initialize Coinbase client: {e}")
+# -----------------------
+# Import Coinbase SDK
+# -----------------------
+if not USE_MOCK:
+    import coinbase as cb
+    try:
+        client = cb.Client(API_KEY, str(pem_path))
+        LIVE_TRADING = True
+    except Exception as e:
+        print(f"❌ Failed to initialize Coinbase client: {e}")
+        USE_MOCK = True
 
-# -------------------------------
-# Example: get balances
-# -------------------------------
-try:
-    balances = client.get_account_balances()
-    print("💰 Starting balances:", balances)
-except Exception as e:
-    print("⚠️ Error reading balances:", e)
+# -----------------------
+# Mock client fallback
+# -----------------------
+if USE_MOCK:
+    class MockClient:
+        def get_account_balances(self):
+            return {"USD": 10000.0, "BTC": 0.05}
 
-# -------------------------------
-# Set live trading flag
-# -------------------------------
-LIVE_TRADING = True
+        def place_order(self, *args, **kwargs):
+            print("⚠️ Mock order placed:", args, kwargs)
 
-# -------------------------------
-# Initialize Flask app
-# -------------------------------
+    client = MockClient()
+    LIVE_TRADING = False
+
+# -----------------------
+# Print starting balances
+# -----------------------
+balances = client.get_account_balances()
+print("💰 Starting balances:", balances)
+print("🔒 LIVE_TRADING =", LIVE_TRADING)
+
+# -----------------------
+# Start Flask server
+# -----------------------
 app = Flask(__name__)
 
 @app.route("/")
-def index():
-    return {"status": "Nija Trading Bot Live!", "LIVE_TRADING": LIVE_TRADING}
+def home():
+    return "🚀 Nija Trading Bot is running!"
 
-# -------------------------------
-# Start Flask server
-# -------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"🚀 Starting NIJA Bot Flask server on port {port}...")
