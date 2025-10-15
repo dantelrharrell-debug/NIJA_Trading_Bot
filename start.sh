@@ -1,4 +1,16 @@
 #!/bin/bash
+set -e  # exit on error
+
+echo "🟢 Activating venv..."
+source /opt/render/project/src/.venv/bin/activate
+
+echo "🟢 Checking installed packages..."
+pip list
+
+echo "🟢 Starting Nija Bot..."
+python3 nija_bot.py
+
+#!/bin/bash
 # start.sh -- debug-first then run bot
 
 set -euo pipefail
