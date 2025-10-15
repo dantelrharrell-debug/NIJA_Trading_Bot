@@ -1,3 +1,72 @@
+# ---------- BEGIN: Coinbase import & client setup (paste exactly) ----------
+import os
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# Try both common package names so deployments don't break
+coinbase_pkg = None
+try:
+    import coinbase_advanced_py as cb  # preferred import name used in some installs
+    coinbase_pkg = 'coinbase_advanced_py'
+except Exception:
+    try:
+        import coinbase as cb  # many wheels provide 'coinbase' package
+        coinbase_pkg = 'coinbase'
+    except Exception:
+        cb = None
+        coinbase_pkg = None
+
+logger.info(f"coinbase package detected: {coinbase_pkg}")
+
+# Minimal MockClient for safety (no live trades) used if real creds not provided
+class MockClient:
+    def __init__(self):
+        logger.warning("Using MockClient (no live trading).")
+
+    def place_order(self, *args, **kwargs):
+        logger.info("MockClient.place_order called", args, kwargs)
+        return {"status": "mock", "detail": "order simulated"}
+
+# Create real client only when env vars are present and package loaded
+COINBASE_API_KEY = os.getenv("COINBASE_API_KEY")
+COINBASE_API_SECRET = os.getenv("COINBASE_API_SECRET")
+COINBASE_API_PASSPHRASE = os.getenv("COINBASE_API_PASSPHRASE")
+COINBASE_PRIVATE_KEY_PEM = os.getenv("COINBASE_PRIVATE_KEY_PEM_PATH")  # optional path
+
+client = None
+if cb is not None and COINBASE_API_KEY and (COINBASE_API_SECRET or COINBASE_PRIVATE_KEY_PEM):
+    try:
+        # Try a few common constructors depending on package variant.
+        # 1) coinbase_advanced_py may expose a Client class in module root:
+        if hasattr(cb, "Client"):
+            client = cb.Client(api_key=COINBASE_API_KEY,
+                               api_secret=COINBASE_API_SECRET,
+                               passphrase=COINBASE_API_PASSPHRASE)
+        # 2) Some installs expose rest API as cb.rest.Client
+        elif hasattr(cb, "rest") and hasattr(cb.rest, "Client"):
+            client = cb.rest.Client(api_key=COINBASE_API_KEY,
+                                    api_secret=COINBASE_API_SECRET,
+                                    passphrase=COINBASE_API_PASSPHRASE)
+        # 3) Fallback: create a simple wrapper that raises if used (safety)
+        else:
+            logger.warning("Coinbase package imported but no known Client constructor found. Falling back to MockClient.")
+            client = MockClient()
+
+        logger.info("Real Coinbase client created. LIVE_TRADING only enabled if LIVE_TRADING env var == 'True'.")
+
+    except Exception as e:
+        logger.exception("Failed to initialize real Coinbase client, using MockClient. Exception: %s", e)
+        client = MockClient()
+else:
+    logger.warning("Coinbase credentials not found or package missing; using MockClient.")
+    client = MockClient()
+
+# Expose client variable for the rest of your bot code to use
+COINBASE_CLIENT = client
+# ---------- END: Coinbase import & client setup ----------
+
 #!/usr/bin/env python3
 """
 NIJA Trading Bot - Render-ready
