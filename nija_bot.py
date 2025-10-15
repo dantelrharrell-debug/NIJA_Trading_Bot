@@ -3,7 +3,14 @@
 NIJA Trading Bot - Coinbase Live Check
 Safe Render-ready test: ensures Coinbase client loads without executing trades
 """
+import sys
+import os
 
+# Make sure the virtualenv site-packages is first in sys.path
+VENV_PATH = os.path.join(os.getcwd(), ".venv", "lib", "python3.13", "site-packages")
+if VENV_PATH not in sys.path:
+    sys.path.insert(0, VENV_PATH)
+    print(f"Added virtualenv site-packages to sys.path: {VENV_PATH}")
 import os
 import sys
 from flask import Flask, jsonify
