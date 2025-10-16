@@ -1,23 +1,57 @@
 #!/usr/bin/env python3
 import os
+from flask import Flask, jsonify
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
+# --------------------------
+# Flask App
+# --------------------------
+app = Flask(__name__)
+
+# --------------------------
+# Config
+# --------------------------
 USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
 
-if USE_MOCK:
-    print("✅ Mock mode is ON — skipping live Coinbase test.")
-else:
+# --------------------------
+# Routes
+# --------------------------
+@app.route("/")
+def home():
+    """
+    Simple health check endpoint.
+    """
+    return jsonify({
+        "status": "OK",
+        "mock_mode": USE_MOCK
+    })
+
+@app.route("/accounts")
+def accounts():
+    """
+    Returns Coinbase account balances if live mode.
+    In mock mode, returns dummy data.
+    """
+    if USE_MOCK:
+        return jsonify({
+            "mock": True,
+            "accounts": [
+                {"currency": "BTC", "available": "0.5"},
+                {"currency": "USD", "available": "1000"}
+            ]
+        })
+
+    # Live mode
     try:
         import coinbase_advanced_py as cb
 
-        # Load API keys from environment variables
         API_KEY = os.getenv("API_KEY")
         API_SECRET = os.getenv("API_SECRET")
         API_PEM_B64 = os.getenv("API_PEM_B64")
 
-        # Initialize client
         client = cb.CoinbaseAdvanced(
             key=API_KEY,
             secret=API_SECRET,
@@ -25,27 +59,22 @@ else:
             sandbox=False  # False for live trading
         )
 
-        # Fetch account info
-        accounts = client.get_accounts()
-        if not accounts:
-            print("⚠️ No accounts returned from Coinbase.")
-        else:
-            usd_accounts = [a for a in accounts if a["currency"] == "USD"]
-            crypto_accounts = [a for a in accounts if a["currency"] != "USD"]
+        accounts_data = client.get_accounts()
+        accounts_list = [
+            {"currency": acc["currency"], "available": acc["available"]}
+            for acc in accounts_data
+        ]
 
-            print("✅ Coinbase connection OK. Accounts summary:\n")
-
-            if usd_accounts:
-                for acc in usd_accounts:
-                    print(f"💵 {acc['currency']}: {acc['available']} available")
-            else:
-                print("💵 No USD accounts found.")
-
-            if crypto_accounts:
-                for acc in crypto_accounts:
-                    print(f"🪙 {acc['currency']}: {acc['available']} available")
-            else:
-                print("🪙 No crypto accounts found.")
+        return jsonify({
+            "mock": False,
+            "accounts": accounts_list
+        })
 
     except Exception as e:
-        print("❌ Coinbase connection FAILED:", e)
+        return jsonify({"error": "Coinbase connection failed", "details": str(e)}), 500
+
+# --------------------------
+# Main check (optional for local run)
+# --------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
