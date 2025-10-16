@@ -1,16 +1,33 @@
 #!/bin/bash
-set -euo pipefail
 
-# create venv (Render often already sets one; this is safe)
-python3 -m venv .venv || true
-. .venv/bin/activate
+# -------------------
+# Activate virtualenv
+# -------------------
+echo "⚡ Activating virtual environment..."
+source .venv/bin/activate
 
-# upgrade pip and install requirements
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+# -------------------
+# Set environment variables (optional override)
+# -------------------
+export USE_MOCK=False
+export PORT=${PORT:-10000}  # Render provides $PORT automatically
+echo "🔑 Using live API mode: USE_MOCK=$USE_MOCK"
 
-# Export PORT for Flask (Render gives $PORT env var)
-export PORT=${PORT:-10000}
+# -------------------
+# Run Flask API in background
+# -------------------
+echo "🚀 Starting nija_bot.py (Flask API)..."
+nohup python nija_bot.py > logs/nija_bot.log 2>&1 &
 
-# run bot (keeps using the same command you used before)
-python3 nija_bot.py
+# -------------------
+# Run trading worker
+# -------------------
+echo "📈 Starting trading_worker.py..."
+nohup python trading_worker.py > logs/trading_worker.log 2>&1 &
+
+# -------------------
+# Confirm running
+# -------------------
+echo "✅ All processes launched. Logs:"
+echo "   nija_bot: logs/nija_bot.log"
+echo "   trading_worker: logs/trading_worker.log"
