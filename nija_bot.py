@@ -1,3 +1,6 @@
+import sys
+print("Python path:", sys.path)
+
 #!/usr/bin/env python3
 import os
 import sys
