@@ -1,3 +1,112 @@
+# --- dynamic coinbase import + introspection guard ---
+import os, sys, pkgutil, traceback
+
+print("=== coinbase import & inspection guard ===")
+print("Python executable:", sys.executable)
+print("cwd:", os.getcwd())
+print("sys.path[:6]:", sys.path[:6])
+
+CoinbaseAdvanced = None
+_client_candidates = [
+    "CoinbaseAdvanced",
+    "CoinbaseAdvancedClient",
+    "CoinbaseClient",
+    "Coinbase",
+    "Client",
+    "CoinbasePro",
+    "CoinbaseAPI",
+    "AdvancedClient",
+]
+
+# Try to import top-level names first
+try:
+    import coinbase as _coinbase_mod
+    print("INFO: imported top-level package 'coinbase'")
+except Exception as e:
+    _coinbase_mod = None
+    print("INFO: no top-level 'coinbase' package importable:", type(e).__name__, e)
+
+# If coinbase loaded, list its attributes and submodules to logs for diagnosis
+if _coinbase_mod is not None:
+    try:
+        attrs = sorted([a for a in dir(_coinbase_mod) if not a.startswith("_")])
+        print("coinbase package attributes (top ~100):", attrs[:100])
+    except Exception:
+        traceback.print_exc()
+    # list internal modules/files
+    try:
+        if hasattr(_coinbase_mod, "__path__"):
+            print("coinbase __path__ (package contents):", list(_coinbase_mod.__path__))
+            print("coinbase submodules / files:")
+            for info in pkgutil.iter_modules(_coinbase_mod.__path__):
+                print(" -", info.name)
+    except Exception:
+        traceback.print_exc()
+
+# Try many import patterns (module, from module import name)
+_try_patterns = [
+    ("coinbase_advanced_py", "CoinbaseAdvanced"),
+    ("coinbase_advanced", "CoinbaseAdvanced"),
+    ("coinbase", "CoinbaseAdvanced"),        # original expectation
+    ("coinbase", "CoinbaseAdvancedClient"),
+    ("coinbase", "CoinbaseClient"),
+    ("coinbase", "Client"),
+    ("coinbase", "Coinbase"),
+    ("coinbase", "AdvancedClient"),
+    ("coinbase", "CoinbasePro"),
+    ("coinbase", "CoinbaseAPI"),
+]
+
+for mod_name, attr in _try_patterns:
+    try:
+        mod = __import__(mod_name)
+        # if attribute is on the module, use it
+        cand = getattr(mod, attr, None)
+        if cand:
+            CoinbaseAdvanced = cand
+            print(f"FOUND: {attr} on module '{mod_name}' — using that as client.")
+            break
+        # if module has submodule, try importlib.import_module('mod_name.attr')
+        try:
+            sub = __import__(f"{mod_name}.{attr}", fromlist=[attr])
+            if sub:
+                CoinbaseAdvanced = getattr(sub, attr, None)
+                if CoinbaseAdvanced:
+                    print(f"FOUND: {attr} in submodule {mod_name}.{attr}")
+                    break
+        except Exception:
+            pass
+    except Exception:
+        # ignore missing module
+        pass
+
+# If still not found, try scanning installed site-packages for related names (diagnostic)
+if CoinbaseAdvanced is None:
+    print("WARNING: Could not find an attribute matching expected client class names.")
+    try:
+        print("Installed site-packages entries (filtered):")
+        for p in pkgutil.iter_modules():
+            name = p.name
+            if any(k in name.lower() for k in ("coin", "base", "advanced")):
+                print(" -", name)
+    except Exception:
+        traceback.print_exc()
+    # Print helpful message to logs and fail fast so Render/gunicorn shows logs
+    raise ImportError(
+        "coinbase client import failed: installed package present but no supported client class found. "
+        "Check the package's exposed API; paste the 'coinbase package attributes' log above and I will map the correct import."
+    )
+
+print("INFO: coinbase client resolved to:", CoinbaseAdvanced)
+# keep LIVE_TRADING toggle
+LIVE_TRADING = os.getenv("LIVE_TRADING", "0") in ("1", "true", "True")
+if not LIVE_TRADING:
+    print("INFO: LIVE_TRADING disabled — bot will simulate orders only.")
+else:
+    print("WARNING: LIVE_TRADING enabled — bot will place real orders.")
+
+print("=== end coinbase import & inspection guard ===")
+
 # === diagnostic import guard (temporary) ===
 import sys, traceback, os
 print("=== nija_bot.py import guard ===")
