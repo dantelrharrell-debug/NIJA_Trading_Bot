@@ -1,4 +1,9 @@
 import sys
+import os
+
+print("Python executable:", sys.executable)
+print("sys.path:", sys.path)
+print("Installed packages:", os.listdir(os.path.join(os.path.dirname(sys.executable), "lib/python3.11/site-packages")))import sys
 print("Python executable:", sys.executable)
 print("sys.path:", sys.path)
 
