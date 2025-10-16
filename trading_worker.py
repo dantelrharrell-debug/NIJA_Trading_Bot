@@ -2,13 +2,13 @@
 """
 trading_worker.py
 
-Run this as a separate process (NOT inside your web server workers).
-Example:
+Run separately from your web process:
   LIVE_TRADING=0 API_KEY=... API_SECRET=... python trading_worker.py
 
-Defaults to dry-run. To enable live trading set LIVE_TRADING=1 and verify keys and sandbox first.
+Defaults to dry-run. Set LIVE_TRADING=1 only when you are certain.
 """
 
+from __future__ import annotations
 import os
 import sys
 import time
@@ -16,26 +16,22 @@ import signal
 import traceback
 import importlib
 import pkgutil
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-# ----------------------------
-# Basic logging helper
-# ----------------------------
 def log(*args, **kwargs):
-    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
-    print(ts, *args, **kwargs, flush=True)
+    prefix = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    print(prefix, *args, **kwargs, flush=True)
 
 # ----------------------------
-# Import guard: locate Coinbase client class
+# Import/inspection guard
 # ----------------------------
-log("=== coinbase import guard ===")
-log("Python:", sys.executable)
+log("=== coinbase import & inspection guard ===")
+log("Python executable:", sys.executable)
 log("cwd:", os.getcwd())
-log("sys.path (first 8):", sys.path[:8])
+log("sys.path[:8]:", sys.path[:8])
 
 CoinbaseClientClass = None
-_candidate_pairs = [
+_candidates = [
     ("coinbase_advanced_py", "CoinbaseAdvanced"),
     ("coinbase_advanced", "CoinbaseAdvanced"),
     ("coinbase", "CoinbaseAdvanced"),
@@ -44,7 +40,7 @@ _candidate_pairs = [
     ("coinbase", "Client"),
 ]
 
-for mod_name, cls_name in _candidate_pairs:
+for mod_name, cls_name in _candidates:
     try:
         mod = importlib.import_module(mod_name)
         log(f"INFO: imported module '{mod_name}'")
@@ -53,7 +49,7 @@ for mod_name, cls_name in _candidate_pairs:
             CoinbaseClientClass = cls
             log(f"FOUND: class '{cls_name}' on module '{mod_name}'")
             break
-        # If submodule/class file exists: try importing mod_name.cls_name
+        # try submodule
         try:
             sub = importlib.import_module(f"{mod_name}.{cls_name}")
             cls = getattr(sub, cls_name, None)
@@ -64,10 +60,10 @@ for mod_name, cls_name in _candidate_pairs:
         except Exception:
             pass
     except Exception as e:
-        log(f"INFO: cannot import {mod_name}: {type(e).__name__}: {e}")
+        log(f"DEBUG: cannot import {mod_name}: {type(e).__name__}: {e}")
 
 if CoinbaseClientClass is None:
-    log("WARNING: did not find expected Coinbase client class. Installed site-packages matching coin/base/advanced:")
+    log("WARNING: could not locate a Coinbase client class. Installed packages (filtered):")
     try:
         for p in pkgutil.iter_modules():
             name = p.name.lower()
@@ -75,13 +71,13 @@ if CoinbaseClientClass is None:
                 log(" -", p.name)
     except Exception:
         traceback.print_exc()
-    log("ERROR: Coinbase client not found. Exiting.")
+    log("ERROR: coinbase client import failed. Adjust guard for your SDK.")
     sys.exit(1)
 
-log("=== coinbase import guard finished ===")
+log("=== import guard finished ===")
 
 # ----------------------------
-# ENV / config
+# Config
 # ----------------------------
 LIVE_TRADING = os.getenv("LIVE_TRADING", "0") in ("1", "true", "True")
 API_KEY = os.getenv("API_KEY")
@@ -89,26 +85,32 @@ API_SECRET = os.getenv("API_SECRET")
 API_PEM_B64 = os.getenv("API_PEM_B64", None)
 
 SYMBOL = os.getenv("SYMBOL", "BTC-USD")
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL_S", "60"))  # seconds
-SIZE_PCT = float(os.getenv("SIZE_PCT", "0.05"))  # default 5% of equity
-MAX_SIZE_PCT = float(os.getenv("MAX_SIZE_PCT", "0.10"))  # never exceed 10% of equity in single order
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL_S", "60"))
+SIZE_PCT = float(os.getenv("SIZE_PCT", "0.05"))
+MAX_SIZE_PCT = float(os.getenv("MAX_SIZE_PCT", "0.10"))
 RSI_PERIOD = int(os.getenv("RSI_PERIOD", "14"))
 EMA_PERIOD = int(os.getenv("EMA_PERIOD", "20"))
 VWAP_LOOKBACK = int(os.getenv("VWAP_LOOKBACK", "50"))
-TRAIL_PCT = float(os.getenv("TRAIL_PCT", "0.005"))  # 0.5%
+TRAIL_PCT = float(os.getenv("TRAIL_PCT", "0.005"))
 
-log("Config:", {"LIVE_TRADING": LIVE_TRADING, "SYMBOL": SYMBOL, "CHECK_INTERVAL": CHECK_INTERVAL})
+log("Config:", {
+    "LIVE_TRADING": LIVE_TRADING,
+    "SYMBOL": SYMBOL,
+    "CHECK_INTERVAL": CHECK_INTERVAL,
+    "SIZE_PCT": SIZE_PCT,
+})
 
 # ----------------------------
-# Instantiate client
+# Instantiate client (try several ctor signatures)
 # ----------------------------
 try:
-    # attempt several constructor signatures (some SDKs use different param names)
     try:
         client = CoinbaseClientClass(api_key=API_KEY, api_secret=API_SECRET, api_pem_b64=API_PEM_B64)
     except TypeError:
-        # try alternate names
-        client = CoinbaseClientClass(key=API_KEY, secret=API_SECRET)
+        try:
+            client = CoinbaseClientClass(key=API_KEY, secret=API_SECRET)
+        except TypeError:
+            client = CoinbaseClientClass()
     log("INFO: Coinbase client instantiated:", type(client).__name__)
 except Exception:
     log("ERROR: failed to instantiate Coinbase client:")
@@ -116,11 +118,10 @@ except Exception:
     sys.exit(1)
 
 # ----------------------------
-# Utilities: safe order wrapper (dry-run by default)
+# Safe order wrapper (dry-run by default)
 # ----------------------------
 _order_sim_counter = 0
-
-def place_order_safe(client, **kwargs) -> Dict[str, Any]:
+def place_order_safe(**kwargs) -> Dict[str, Any]:
     global _order_sim_counter
     if not LIVE_TRADING:
         _order_sim_counter += 1
@@ -136,9 +137,11 @@ def place_order_safe(client, **kwargs) -> Dict[str, Any]:
         log("DRY-RUN order:", sim)
         return sim
 
-    # LIVE_TRADING path
+    place_fn = getattr(client, "place_order", None) or getattr(client, "create_order", None)
+    if not callable(place_fn):
+        raise RuntimeError("Coinbase client has no place_order/create_order method; adapt wrapper.")
     try:
-        resp = client.place_order(**kwargs)
+        resp = place_fn(**kwargs)
         log("LIVE order response:", resp)
         return resp
     except Exception:
@@ -147,69 +150,67 @@ def place_order_safe(client, **kwargs) -> Dict[str, Any]:
         raise
 
 # ----------------------------
-# Market data helper functions - adapt to the SDK you have
+# Market data helper
 # ----------------------------
 def get_historic_closes(symbol: str, granularity: int = 60, limit: int = 200) -> List[float]:
-    """
-    Try common method names that coinbase clients expose for historic candles.
-    Returns list of close prices (floats), newest last.
-    """
-    # Try client's methods in order of likely names; adapt as needed based on SDK
-    cand_calls = [
-        ("get_historic_candles", ("symbol", granularity, limit)),  # earlier examples
+    candidate_calls = [
+        ("get_historic_candles", (symbol, granularity, limit)),
         ("get_historic_rates", (symbol, granularity, limit)),
-        ("get_klines", (symbol, granularity, limit)),
-        ("historic_candles", (symbol, granularity, limit)),
         ("get_candles", (symbol, granularity, limit)),
+        ("historic_candles", (symbol, granularity, limit)),
+        ("get_klines", (symbol, granularity, limit)),
     ]
-    for method_name, args in cand_calls:
+    for method_name, args in candidate_calls:
         method = getattr(client, method_name, None)
         if callable(method):
             try:
-                res = method(*args if args else ())
-                # try to normalize: if list of candles where candle[-1] or candle[4] is close
-                closes = []
+                res = method(*args)
+                closes: List[float] = []
                 if isinstance(res, list):
                     for c in res:
                         if isinstance(c, (list, tuple)) and len(c) >= 5:
-                            # assume [time, open, high, low, close, ...]
                             closes.append(float(c[4]))
-                        elif isinstance(c, dict) and ("close" in c):
+                        elif isinstance(c, dict) and "close" in c:
                             closes.append(float(c["close"]))
-                elif isinstance(res, dict) and "candles" in res:
-                    for c in res["candles"]:
-                        closes.append(float(c.get("close") or c.get("price") or c[4]))
-                if len(closes) > 0:
+                elif isinstance(res, dict):
+                    if "candles" in res and isinstance(res["candles"], list):
+                        for c in res["candles"]:
+                            if isinstance(c, dict):
+                                closes.append(float(c.get("close") or c.get("price") or 0))
+                            elif isinstance(c, (list, tuple)) and len(c) >= 5:
+                                closes.append(float(c[4]))
+                if closes:
                     return closes[-limit:]
             except Exception as e:
-                log(f"DEBUG: method {method_name} raised {type(e).__name__}: {e}")
-                # continue trying others
-    # As last resort, try ticker price repeated
-    try:
-        ticker = getattr(client, "get_ticker", None)
-        if callable(ticker):
-            t = ticker(symbol)
-            price = float(t.get("price") if isinstance(t, dict) else float(t))
-            # return list of same price (not ideal but keeps code safe)
+                log(f"DEBUG: {method_name} raised {type(e).__name__}: {e}")
+                continue
+
+    ticker_fn = getattr(client, "get_ticker", None) or getattr(client, "ticker", None)
+    if callable(ticker_fn):
+        try:
+            t = ticker_fn(SYMBOL)
+            price = None
+            if isinstance(t, dict):
+                price = t.get("price") or t.get("last") or t.get("close")
+            else:
+                price = t
+            price = float(price)
             return [price] * limit
-    except Exception:
-        pass
-    raise RuntimeError("Could not fetch historic closes from client - adapt get_historic_closes for your SDK")
+        except Exception:
+            log("DEBUG: ticker fallback failed.")
+    raise RuntimeError("Could not fetch historic closes — adapt get_historic_closes for your SDK")
 
 # ----------------------------
-# Indicator calculations
+# Indicators
 # ----------------------------
 def calc_vwap(prices: List[float]) -> float:
-    # simple unweighted average as placeholder (true VWAP needs volume)
     return sum(prices) / len(prices)
 
 def calc_ema(prices: List[float], period: int) -> float:
-    # simple EMA: use SMA then smoothing
     if len(prices) < period:
         return sum(prices) / len(prices)
-    sma = sum(prices[-period:]) / period
     k = 2 / (period + 1)
-    ema = sma
+    ema = sum(prices[-period:]) / period
     for price in prices[-period:]:
         ema = price * k + ema * (1 - k)
     return ema
@@ -217,8 +218,7 @@ def calc_ema(prices: List[float], period: int) -> float:
 def calc_rsi(prices: List[float], period: int = 14) -> Optional[float]:
     if len(prices) < period + 1:
         return None
-    gains = []
-    losses = []
+    gains, losses = [], []
     for i in range(1, len(prices)):
         d = prices[i] - prices[i - 1]
         gains.append(max(d, 0))
@@ -231,7 +231,32 @@ def calc_rsi(prices: List[float], period: int = 14) -> Optional[float]:
     return 100.0 - (100.0 / (1.0 + rs))
 
 # ----------------------------
-# Trade signal
+# Account helper
+# ----------------------------
+def get_usd_equity() -> float:
+    get_acc_fn = getattr(client, "get_account", None) or getattr(client, "get_wallet", None) or getattr(client, "get_balance", None)
+    if callable(get_acc_fn):
+        try:
+            acct = get_acc_fn("USD")
+            if isinstance(acct, dict):
+                if "balance" in acct:
+                    b = acct["balance"]
+                    if isinstance(b, dict) and "amount" in b:
+                        return float(b["amount"])
+                    return float(b)
+                if "available" in acct:
+                    return float(acct["available"])
+                if "amount" in acct:
+                    return float(acct["amount"])
+            elif isinstance(acct, (int, float, str)):
+                return float(acct)
+        except Exception:
+            log("DEBUG: get_usd_equity parsing failed; falling through.")
+    log("INFO: USD equity not found; defaulting to 1000 for simulation.")
+    return 1000.0
+
+# ----------------------------
+# Strategy: Nija Signal
 # ----------------------------
 def nija_trade_signal() -> Optional[Dict[str, Any]]:
     try:
@@ -241,7 +266,7 @@ def nija_trade_signal() -> Optional[Dict[str, Any]]:
         return None
 
     if len(closes) < max(RSI_PERIOD + 1, EMA_PERIOD, 10):
-        log("INFO: not enough data for indicators:", len(closes))
+        log("INFO: not enough data:", len(closes))
         return None
 
     current_price = float(closes[-1])
@@ -249,12 +274,11 @@ def nija_trade_signal() -> Optional[Dict[str, Any]]:
     ema = calc_ema(closes, EMA_PERIOD)
     rsi = calc_rsi(closes, RSI_PERIOD)
     if rsi is None:
-        log("INFO: RSI not available (insufficient data).")
         return None
 
-    log(f"Indicators — price: {current_price:.2f}, vwap: {vwap:.2f}, ema{EMA_PERIOD}: {ema:.2f}, rsi{RSI_PERIOD}: {rsi:.2f}")
+    log(f"IND: price={current_price:.2f}, vwap={vwap:.2f}, ema{EMA_PERIOD}={ema:.2f}, rsi{RSI_PERIOD}={rsi:.2f}")
 
-    # Very conservative signal logic. Adjust for your strategy.
+    side = None
     if current_price > vwap and rsi < 70 and current_price > ema:
         side = "buy"
     elif current_price < vwap and rsi > 30 and current_price < ema:
@@ -262,53 +286,26 @@ def nija_trade_signal() -> Optional[Dict[str, Any]]:
     else:
         return None
 
-    # Fetch account USD balance safely
-    equity = 0.0
-    try:
-        get_acc = getattr(client, "get_account", None) or getattr(client, "get_wallet", None)
-        if callable(get_acc):
-            acct = get_acc("USD")
-            # try to extract balance from common shapes
-            if isinstance(acct, dict):
-                # many SDKs: acct['balance'] or acct['available'] or acct['balance']['amount']
-                if "balance" in acct and isinstance(acct["balance"], (dict, str, float)):
-                    b = acct["balance"]
-                    if isinstance(b, dict) and "amount" in b:
-                        equity = float(b["amount"])
-                    else:
-                        equity = float(b)
-                elif "available" in acct:
-                    equity = float(acct["available"])
-                elif "amount" in acct:
-                    equity = float(acct["amount"])
-            elif isinstance(acct, (int, float, str)):
-                equity = float(acct)
-    except Exception:
-        log("DEBUG: fetching USD account failed; defaulting equity to 1000 (simulation).")
-        equity = 1000.0
-
-    if equity <= 0:
-        equity = 1000.0  # fallback for dry-run or missing account info
-
-    size_pct = min(SIZE_PCT, MAX_SIZE_PCT)
-    size = (equity * size_pct) / current_price
-    size = round(size, 6)
-
+    equity = get_usd_equity() or 1000.0
+    pct = min(SIZE_PCT, MAX_SIZE_PCT)
+    size = round((equity * pct) / current_price, 6)
     return {"side": side, "size": size, "trail_pct": TRAIL_PCT, "price": current_price}
 
 # ----------------------------
-# Main loop with backoff and graceful shutdown
+# Shutdown flag
 # ----------------------------
 _stop_requested = False
-
 def _signal_handler(sig, frame):
     global _stop_requested
-    log("Signal received:", sig, " — shutting down gracefully...")
+    log("Signal received:", sig, " — shutting down...")
     _stop_requested = True
 
 signal.signal(signal.SIGINT, _signal_handler)
 signal.signal(signal.SIGTERM, _signal_handler)
 
+# ----------------------------
+# Main trading loop
+# ----------------------------
 def trading_loop():
     backoff = 1
     while not _stop_requested:
@@ -316,51 +313,47 @@ def trading_loop():
             signal_data = nija_trade_signal()
             if signal_data:
                 log("Trade signal:", signal_data)
-                # Build order kwargs - adapt fields to your client
                 order_kwargs = {
                     "symbol": SYMBOL,
                     "side": signal_data["side"],
                     "type": "market",
                     "size": signal_data["size"],
                 }
-                # Use safe wrapper
                 try:
-                    resp = place_order_safe(client, **order_kwargs)
-                    log("Order result:", resp)
+                    resp = place_order_safe(**order_kwargs)
+                    log("Order response:", resp)
                 except Exception:
-                    log("Order failed — continuing.")
+                    log("Order placement failed; see stack.")
             else:
                 log("No trade signal.")
 
-            # reset backoff on success or normal iteration
             backoff = 1
-            # Wait interval, but exit promptly if stop requested
-            for _ in range(int(CHECK_INTERVAL)):
-                if _stop_requested:
-                    break
+            slept = 0
+            while slept < CHECK_INTERVAL and not _stop_requested:
                 time.sleep(1)
+                slept += 1
+
         except Exception as e:
             log("Unhandled error in trading loop:", type(e).__name__, e)
             traceback.print_exc()
             time.sleep(backoff)
-            backoff = min(backoff * 2, 300)  # cap backoff at 5 minutes
+            backoff = min(backoff * 2, 300)
 
-    log("Trading loop stopped.")
+    log("Trading loop exiting cleanly.")
 
 # ----------------------------
 # Entry point
 # ----------------------------
 if __name__ == "__main__":
-    log("Starting trading_worker")
+    log("Starting trading_worker.")
     if not LIVE_TRADING:
-        log("DRY-RUN mode: no live orders will be placed. Set LIVE_TRADING=1 to enable (use extreme caution).")
+        log("DRY-RUN mode (no real orders).")
     else:
-        log("LIVE_TRADING=1 — LIVE ORDERS WILL BE PLACED. Ensure keys and sandbox verified.")
-
+        log("WARNING: LIVE_TRADING enabled — orders WILL be placed.")
     try:
         trading_loop()
     except KeyboardInterrupt:
-        log("KeyboardInterrupt received — exiting.")
+        log("Interrupted, exiting.")
     except Exception:
         log("Fatal error:")
         traceback.print_exc()
