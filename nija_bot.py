@@ -1,45 +1,74 @@
+#!/usr/bin/env python3
 import os
 import sys
-import logging
+import traceback
+from flask import Flask, request, jsonify
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
-logger.addHandler(handler)
+# -------------------------------
+# Environment & Trading Settings
+# -------------------------------
+USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"  # False on Render
+FORCE_LIVE = True        # Force live trading
+FORCE_TRADING = True     # Force trades to execute
 
-COINBASE_CLIENT = None
-LIVE_TRADING = False
+# -------------------------------
+# Initialize Flask
+# -------------------------------
+app = Flask(__name__)
 
+# -------------------------------
+# Attempt Coinbase Advanced Import
+# -------------------------------
 try:
     import coinbase_advanced_py as cb
-    API_KEY = os.getenv("COINBASE_API_KEY")
-    API_SECRET = os.getenv("COINBASE_API_SECRET")
-    API_PASSPHRASE = os.getenv("COINBASE_API_PASSPHRASE")
-    API_PEM_B64 = os.getenv("COINBASE_PRIVATE_KEY_PEM_BASE64")
+    print("✅ coinbase_advanced_py imported successfully.")
+except ModuleNotFoundError as e:
+    print("⚠️ coinbase_advanced_py NOT found. Falling back to MockClient.")
+    USE_MOCK = True
 
-    if API_KEY and (API_SECRET or API_PEM_B64):
-        COINBASE_CLIENT = cb.Client(
-            api_key=API_KEY,
-            api_secret=API_SECRET,
-            passphrase=API_PASSPHRASE
-        )
-        LIVE_TRADING = True
-        logger.info("✅ Coinbase client initialized (LIVE TRADING)")
+# -------------------------------
+# Coinbase Client Setup
+# -------------------------------
+if not USE_MOCK and FORCE_LIVE and FORCE_TRADING:
+    try:
+        API_KEY = os.getenv("COINBASE_API_KEY")
+        API_SECRET = os.getenv("COINBASE_API_SECRET")
+        client = cb.Client(API_KEY, API_SECRET)
+        print("🚀 Live Coinbase client initialized ✅")
+    except Exception as e:
+        print("❌ Failed to initialize Coinbase client:", e)
+        USE_MOCK = True
+
+if USE_MOCK:
+    # Minimal MockClient for testing & fallback
+    class MockClient:
+        def place_order(self, *args, **kwargs):
+            print("💤 Mock order executed:", args, kwargs)
+
+    client = MockClient()
+    print("⚠️ MockClient initialized (NO LIVE TRADING)")
+
+# -------------------------------
+# Flask Routes
+# -------------------------------
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    # Example: execute a trade
+    if not USE_MOCK and FORCE_TRADING:
+        try:
+            client.place_order(**data)
+            return jsonify({"status": "live trade executed"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
     else:
-        raise ValueError("Credentials missing")
-except Exception as e:
-    logger.warning("⚠️ Failed to initialize Coinbase client, using MockClient. Exception: %s", e)
+        client.place_order(**data)
+        return jsonify({"status": "mock trade executed"})
 
-# Minimal MockClient fallback
-class MockClient:
-    def get_account_balances(self):
-        return {"USD": 1000.0, "BTC": 0.0}
-
-    def place_order(self, *args, **kwargs):
-        logger.info("Mock order executed: args=%s kwargs=%s", args, kwargs)
-        return {"status": "mock", "args": args, "kwargs": kwargs}
-
-if COINBASE_CLIENT is None:
-    COINBASE_CLIENT = MockClient()
-    LIVE_TRADING = False
+# -------------------------------
+# Run Flask App
+# -------------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🚀 Starting NIJA Bot Flask server on port {port}...")
+    app.run(host="0.0.0.0", port=port)
