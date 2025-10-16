@@ -1,240 +1,141 @@
 #!/usr/bin/env python3
-"""
-nija_bot.py
-Robust Render-ready Flask app for NIJA trading bot.
-
-- Auto-detects coinbase package in the venv.
-- Introspects the imported coinbase module (safe, no network calls).
-- Attempts multiple import names and constructors.
-- Falls back to mock mode safely if live client cannot be initialized.
-- Adds simple file + console logging for Render logs.
-"""
-
 import os
-import sys
-import traceback
 import importlib
-import inspect
 import logging
-from logging.handlers import RotatingFileHandler
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
+import traceback
+import inspect
+from flask import Flask
 
 # -------------------
-# Load environment
+# Logging setup
 # -------------------
-load_dotenv()
-
-# -------------------
-# Logging (console + file)
-# -------------------
-LOG_FILE = os.getenv("NIJA_LOG_FILE", "nija_bot.log")
 logger = logging.getLogger("nija_bot")
-logger.setLevel(logging.INFO)
-fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-
-# Console handler
-ch = logging.StreamHandler(sys.stdout)
-ch.setFormatter(fmt)
-logger.addHandler(ch)
-
-# Rotating file handler (keeps logs small)
-fh = RotatingFileHandler(LOG_FILE, maxBytes=2_000_000, backupCount=3)
-fh.setFormatter(fmt)
-logger.addHandler(fh)
-
-logger.info("Starting NIJA bot...")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # -------------------
-# Determine mock mode flag from env (default True for safety)
+# Determine mock mode
 # -------------------
-USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
-logger.info("USE_MOCK initial value: %s", USE_MOCK)
+USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
 
 # -------------------
-# Ensure venv site-packages is on sys.path (adjust python version as needed)
+# Import Coinbase module
 # -------------------
 try:
-    venv_site = os.path.join(os.getcwd(), ".venv", "lib", f"python3.11", "site-packages")
-    if venv_site not in sys.path:
-        sys.path.insert(0, venv_site)
-    logger.info("Ensured venv site-packages on sys.path: %s", venv_site)
-except Exception:
-    logger.exception("Failed to configure venv site-packages path.")
+    import coinbase_advanced_py as cb_module
+    logger.info("✅ Imported Coinbase module as: %s", cb_module.__name__)
+except ImportError as e:
+    logger.error("❌ Failed to import coinbase_advanced_py: %s", e)
+    USE_MOCK = True
+    cb_module = None
 
 # -------------------
-# Robust Coinbase import + introspection + client init
+# Coinbase introspection + dynamic client discovery
 # -------------------
-client = None
-cb_module = None
-if not USE_MOCK:
-    possible_names = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
-    import_errors = {}
+if cb_module and not USE_MOCK:
+    logger.info("Introspecting imported coinbase module: %s", cb_module.__name__)
 
-    for name in possible_names:
+    # --- Module introspection ---
+    try:
+        names = sorted([n for n in dir(cb_module) if not n.startswith("_")])
+        logger.info("Top-level names: %s", names[:200])
+        for n in names:
+            obj = getattr(cb_module, n)
+            if inspect.isclass(obj) or inspect.isfunction(obj) or callable(obj):
+                try:
+                    sig = inspect.signature(obj)
+                except (ValueError, TypeError):
+                    sig = "<no signature available>"
+                logger.info("  %s: %s | signature: %s", n, type(obj).__name__, sig)
+    except Exception:
+        logger.exception("Error during coinbase introspection")
+
+    # --- Helper to try instantiation ---
+    def try_instantiate(obj):
+        """Try to instantiate a class/factory with common param names. Return instance or None."""
+        if not callable(obj):
+            return None
+        param_sets = [
+            {"api_key": os.getenv("API_KEY"), "api_secret": os.getenv("API_SECRET"), "api_pem_b64": os.getenv("API_PEM_B64"), "sandbox": False},
+            {"api_key": os.getenv("API_KEY"), "api_secret": os.getenv("API_SECRET"), "pem_b64": os.getenv("API_PEM_B64"), "sandbox": False},
+            {"key": os.getenv("API_KEY"), "secret": os.getenv("API_SECRET"), "pem": os.getenv("API_PEM_B64")},
+            {},  # no-arg factory
+        ]
+        for params in param_sets:
+            try:
+                instance = obj(**params) if params else obj()
+                logger.info("Instantiation succeeded for %s with params %s", getattr(obj, "__name__", repr(obj)), params)
+                return instance
+            except TypeError as e:
+                logger.debug("TypeError for %s with params %s: %s", getattr(obj, "__name__", repr(obj)), params, e)
+            except Exception as e:
+                logger.warning("Instantiation attempt for %s with params %s raised: %s", getattr(obj, "__name__", repr(obj)), params, e)
+        return None
+
+    # --- Dynamic client discovery ---
+    client = None
+    search_names = [n for n in dir(cb_module) if "client" in n.lower()] + [
+        "CoinbaseAdvancedClient", "CoinbaseAdvanced", "CoinbaseAdvancedClientV1", "Client", "CoinbaseClient"
+    ]
+    seen = set()
+    candidates = []
+    for n in search_names:
+        if n not in seen:
+            seen.add(n)
+            candidates.append(n)
+
+    logger.info("Dynamic client discovery candidates: %s", candidates)
+
+    for name in candidates:
         try:
-            cb_module = importlib.import_module(name)
-            logger.info("✅ Imported Coinbase module as: %s", name)
-            break
+            if hasattr(cb_module, name):
+                obj = getattr(cb_module, name)
+                logger.info("Trying candidate: %s -> %s", name, type(obj))
+                inst = try_instantiate(obj)
+                if inst:
+                    client = inst
+                    logger.info("✅ Client instantiated from %s", name)
+                    break
+            else:
+                try:
+                    sub = importlib.import_module(f"{cb_module.__name__}.{name.lower()}")
+                    logger.info("Found submodule: %s", sub.__name__)
+                    for subattr in dir(sub):
+                        if "client" in subattr.lower() or subattr.lower().endswith("client"):
+                            obj = getattr(sub, subattr)
+                            logger.info("Trying submodule attribute: %s.%s", sub.__name__, subattr)
+                            inst = try_instantiate(obj)
+                            if inst:
+                                client = inst
+                                logger.info("✅ Client instantiated from %s.%s", sub.__name__, subattr)
+                                break
+                    if client:
+                        break
+                except Exception as e:
+                    logger.debug("No submodule %s.%s: %s", cb_module.__name__, name.lower(), e)
         except Exception as e:
-            import_errors[name] = repr(e)
+            logger.exception("Error while trying candidate %s: %s", name, e)
 
-    if cb_module is None:
-        logger.error("❌ Could not import coinbase module. Errors: %s", import_errors)
-        logger.info("Falling back to MOCK mode for safety.")
+    # --- Fallback to other top-level callables ---
+    if client is None:
+        for n in sorted([n for n in dir(cb_module) if not n.startswith("_")])[:400]:
+            if n.lower().startswith("create") or n.lower().endswith("client") or n.lower().startswith("from_"):
+                try:
+                    obj = getattr(cb_module, n)
+                    logger.info("Trying other factory-like callable: %s", n)
+                    inst = try_instantiate(obj)
+                    if inst:
+                        client = inst
+                        logger.info("✅ Client instantiated from factory-like callable %s", n)
+                        break
+                except Exception:
+                    logger.debug("Skipping %s", n)
+
+    # --- Final fallback to MockClient ---
+    if client is None:
+        logger.error("❌ Dynamic discovery failed — no usable client instance found. Falling back to MockClient.")
         USE_MOCK = True
     else:
-        # -------------------
-        # Introspect imported module (safe - no network calls)
-        # -------------------
-        try:
-            logger.info("Introspecting imported coinbase module: %s", cb_module.__name__)
-            names = sorted([n for n in dir(cb_module) if not n.startswith("_")])
-            logger.info("Top-level names: %s", names[:200])
-            for n in names:
-                obj = getattr(cb_module, n)
-                if inspect.isclass(obj) or inspect.isfunction(obj) or callable(obj):
-                    try:
-                        sig = inspect.signature(obj)
-                    except (ValueError, TypeError):
-                        sig = "<no signature available>"
-                    logger.info("  %s: %s | signature: %s", n, type(obj).__name__, sig)
-        except Exception:
-            logger.exception("Error during coinbase introspection")
-
-        # -------------------
-        # Try to find a usable client class or factory
-        # -------------------
-        try:
-            candidate_attrs = [
-                "CoinbaseAdvancedClient",
-                "CoinbaseAdvanced",
-                "CoinbaseAdvancedClientV1",
-                "Client",
-            ]
-            for attr in candidate_attrs:
-                if hasattr(cb_module, attr):
-                    cls_or_factory = getattr(cb_module, attr)
-                    try:
-                        # Try common constructor patterns
-                        client = cls_or_factory(
-                            api_key=os.getenv("API_KEY"),
-                            api_secret=os.getenv("API_SECRET"),
-                            api_pem_b64=os.getenv("API_PEM_B64"),
-                            sandbox=False,
-                        )
-                        logger.info("✅ Initialized Coinbase client using %s.%s", cb_module.__name__, attr)
-                        break
-                    except TypeError:
-                        # Try alternative param name
-                        try:
-                            client = cls_or_factory(
-                                api_key=os.getenv("API_KEY"),
-                                api_secret=os.getenv("API_SECRET"),
-                                pem_b64=os.getenv("API_PEM_B64"),
-                                sandbox=False,
-                            )
-                            logger.info("✅ Initialized Coinbase client (alt params) using %s.%s", cb_module.__name__, attr)
-                            break
-                        except Exception as e:
-                            logger.warning("Instantiation of %s.%s failed: %s", cb_module.__name__, attr, e)
-                    except Exception as e:
-                        logger.warning("Error instantiating %s.%s: %s", cb_module.__name__, attr, e)
-
-            # If not instantiated yet, try common factory functions
-            if client is None:
-                for funcname in ["Client", "create_client", "from_env"]:
-                    if hasattr(cb_module, funcname):
-                        try:
-                            factory = getattr(cb_module, funcname)
-                            client = factory()
-                            logger.info("✅ Initialized client via factory %s.%s()", cb_module.__name__, funcname)
-                            break
-                        except Exception as e:
-                            logger.warning("Factory %s.%s() failed: %s", cb_module.__name__, funcname, e)
-
-            if client is None:
-                logger.error("❌ Coinbase module imported but no usable client was instantiated.")
-                USE_MOCK = True
-        except Exception:
-            logger.exception("Unexpected error while initializing Coinbase client.")
-            USE_MOCK = True
+        logger.info("✅ Dynamic discovery created a client instance: %s", type(client))
 else:
-    logger.info("ℹ️ Running in MOCK mode (no real trades)")
-
-# -------------------
-# Provide a safe mock client when needed
-# -------------------
-class MockClient:
-    def __init__(self):
-        self.name = "MockClient"
-
-    def place_order(self, *args, **kwargs):
-        logger.info("MOCK place_order called with args=%s kwargs=%s", args, kwargs)
-        return {"status": "mocked", "order_id": "mock-" + os.urandom(4).hex()}
-
-    def get_account(self, *args, **kwargs):
-        logger.info("MOCK get_account called")
-        return {"balance": 1000.0, "currency": "USD"}
-
-    def __repr__(self):
-        return "<MockClient>"
-
-if USE_MOCK or client is None:
-    client = MockClient()
-    logger.info("Using MockClient (safe)")
-
-# -------------------
-# Flask app setup
-# -------------------
-app = Flask(__name__)
-WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
-
-@app.route("/", methods=["GET"])
-def index():
-    """Healthcheck / status"""
-    try:
-        return jsonify({"status": "NIJA Bot running", "mock": isinstance(client, MockClient)}), 200
-    except Exception:
-        logger.exception("Error in index route")
-        return jsonify({"status": "error"}), 500
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    """Primary webhook endpoint that triggers trading logic (mock safe)."""
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-        secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
-        if secret != WEBHOOK_SECRET:
-            logger.warning("Unauthorized webhook attempt.")
-            return jsonify({"error": "unauthorized"}), 401
-
-        event_type = data.get("type", "unknown")
-        logger.info("🔔 Received webhook event: %s", event_type)
-
-        # Example: if event says place an order
-        if event_type == "place_order":
-            params = data.get("params", {})
-            logger.info("Attempting to place order with params: %s", params)
-            try:
-                result = client.place_order(**params)
-                logger.info("Order result: %s", result)
-                return jsonify({"status": "ok", "result": result}), 200
-            except Exception as e:
-                logger.exception("Error placing order")
-                return jsonify({"error": "order_failed", "detail": str(e)}), 500
-
-        # For other events, just echo
-        return jsonify({"status": "received", "event": event_type, "data": data}), 200
-
-    except Exception as e:
-        logger.exception("Unhandled exception in webhook")
-        return jsonify({"error": "internal_error", "detail": str(e)}), 500
-
-# -------------------
-# Run locally (only when executed directly)
-# -------------------
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
-    logger.info("Running Flask dev server on 0.0.0.0:%s", port)
-    app.run(host="0.0.0.0", port=port)
+    client = None
+    logger.warning("Using MockClient due to import failure or USE_MOCK=True")
