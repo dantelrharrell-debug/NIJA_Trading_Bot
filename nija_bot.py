@@ -1,3 +1,52 @@
+# === diagnostic import guard (temporary) ===
+import sys, traceback, os
+print("=== nija_bot.py import guard ===")
+print("Python executable:", sys.executable)
+print("cwd:", os.getcwd())
+print("sys.path:", sys.path[:6])
+
+_import_candidates = [
+    ("coinbase_advanced_py", "from coinbase_advanced_py import CoinbaseAdvanced"),
+    ("coinbase_advanced", "from coinbase_advanced import CoinbaseAdvanced"),
+    ("coinbase", "from coinbase import CoinbaseAdvanced"),
+]
+
+CoinbaseAdvanced = None
+for module_name, stmt in _import_candidates:
+    try:
+        __import__(module_name)
+        print(f"INFO: module '{module_name}' import OK")
+        try:
+            exec(stmt, globals())
+            print(f"INFO: executed: {stmt}")
+            CoinbaseAdvanced = globals().get("CoinbaseAdvanced")
+            break
+        except Exception as e:
+            print(f"WARNING: couldn't execute '{stmt}':", type(e).__name__, e)
+    except Exception as e:
+        print(f"INFO: module '{module_name}' import failed: {type(e).__name__}: {e}")
+
+if CoinbaseAdvanced is None:
+    print("ERROR: Could not import coinbase client under any tested name.")
+    print("Installed site-packages snapshot:")
+    try:
+        import pkgutil
+        for p in pkgutil.iter_modules():
+            name = p.name.lower()
+            if "coin" in name or "base" in name or "advanced" in name:
+                print(" -", p.name)
+    except Exception:
+        traceback.print_exc()
+    raise ImportError("coinbase client import failed (see logs).")
+print("=== import guard finished ===")
+
+# === your original imports start here ===
+from flask import Flask, request, jsonify
+import os
+from dotenv import load_dotenv
+load_dotenv()
+# ... rest of your code ...
+
 import sys, os
 print("Python executable:", sys.executable)
 print("sys.path:", sys.path)
