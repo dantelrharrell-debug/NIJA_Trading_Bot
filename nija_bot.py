@@ -1,69 +1,51 @@
 #!/usr/bin/env python3
 import os
-import logging
-from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-# -------------------
-# Logging
-# -------------------
-logger = logging.getLogger("nija_bot")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+load_dotenv()
 
-# -------------------
-# Flask app
-# -------------------
-app = Flask(__name__)
+USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
 
-# -------------------
-# Coinbase client setup
-# -------------------
-USE_MOCK = False  # always live
+if USE_MOCK:
+    print("✅ Mock mode is ON — skipping live Coinbase test.")
+else:
+    try:
+        import coinbase_advanced_py as cb
 
-try:
-    import coinbase_advanced_py as cb
-    logger.info("✅ Imported coinbase_advanced_py successfully")
-except ImportError as e:
-    logger.critical("❌ Failed to import coinbase_advanced_py: %s", e)
-    raise e  # stop startup if live client is missing
+        # Load API keys from environment variables
+        API_KEY = os.getenv("API_KEY")
+        API_SECRET = os.getenv("API_SECRET")
+        API_PEM_B64 = os.getenv("API_PEM_B64")
 
-# -------------------
-# Load API keys from environment
-# -------------------
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-API_PEM_B64 = os.getenv("API_PEM_B64")
+        # Initialize client
+        client = cb.CoinbaseAdvanced(
+            key=API_KEY,
+            secret=API_SECRET,
+            pem_b64=API_PEM_B64,
+            sandbox=False  # False for live trading
+        )
 
-if not all([API_KEY, API_SECRET, API_PEM_B64]):
-    logger.critical("❌ Missing one or more Coinbase API credentials in environment variables")
-    raise ValueError("Missing Coinbase API credentials")
+        # Fetch account info
+        accounts = client.get_accounts()
+        if not accounts:
+            print("⚠️ No accounts returned from Coinbase.")
+        else:
+            usd_accounts = [a for a in accounts if a["currency"] == "USD"]
+            crypto_accounts = [a for a in accounts if a["currency"] != "USD"]
 
-# Initialize Coinbase client
-client = cb.CoinbaseAdvanced(
-    api_key=API_KEY,
-    api_secret=API_SECRET,
-    api_pem_b64=API_PEM_B64
-)
-logger.info("✅ Coinbase client initialized successfully")
+            print("✅ Coinbase connection OK. Accounts summary:\n")
 
-# -------------------
-# Simple health check
-# -------------------
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "live", "mock": USE_MOCK})
+            if usd_accounts:
+                for acc in usd_accounts:
+                    print(f"💵 {acc['currency']}: {acc['available']} available")
+            else:
+                print("💵 No USD accounts found.")
 
-# -------------------
-# Example webhook route
-# -------------------
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    logger.info("Webhook received: %s", data)
-    return jsonify({"status": "ok"}), 200
+            if crypto_accounts:
+                for acc in crypto_accounts:
+                    print(f"🪙 {acc['currency']}: {acc['available']} available")
+            else:
+                print("🪙 No crypto accounts found.")
 
-# -------------------
-# Run app via gunicorn in Render
-# -------------------
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    except Exception as e:
+        print("❌ Coinbase connection FAILED:", e)
