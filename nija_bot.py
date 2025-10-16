@@ -1,34 +1,28 @@
-import sys
-import os
-
-print("Python executable:", sys.executable)
-print("sys.path:", sys.path)
-print("Installed packages:", os.listdir(os.path.join(os.path.dirname(sys.executable), "lib/python3.11/site-packages")))import sys
-print("Python executable:", sys.executable)
-print("sys.path:", sys.path)
-
 #!/usr/bin/env python3
 import os
+import sys
+import traceback
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
+# ------------------------
 # Load environment variables
-load_dotenv()
+# ------------------------
+load_dotenv()  # Loads variables from a .env file if present
 
 # ------------------------
-# Flask app
+# Debug: list installed packages
+# ------------------------
+site_packages_path = os.path.join(os.path.dirname(sys.executable), "lib/python3.11/site-packages")
+print("Installed packages:", os.listdir(site_packages_path))
+
+# ------------------------
+# Flask app setup
 # ------------------------
 app = Flask(__name__)
 
 # ------------------------
-# Root route (for testing)
-# ------------------------
-@app.route("/")
-def home():
-    return "NIJA Trading Bot is running 🔥"
-
-# ------------------------
-# Webhook route
+# Webhook secret
 # ------------------------
 WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
 
@@ -38,46 +32,37 @@ def webhook():
     secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
     if secret != WEBHOOK_SECRET:
         return jsonify({"error": "unauthorized"}), 401
-    # TODO: Add your webhook processing logic here
-    return jsonify({"status": "received"})
+    # Your webhook logic here
+    return jsonify({"status": "ok"}), 200
 
 # ------------------------
 # Coinbase client setup
 # ------------------------
-USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
+USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
 
 if not USE_MOCK:
     try:
         import coinbase_advanced_py as cb
         print("✅ coinbase_advanced_py imported successfully.")
 
+        # Load API keys from environment variables
         API_KEY = os.getenv("API_KEY")
         API_SECRET = os.getenv("API_SECRET")
-        API_PASSPHRASE = os.getenv("API_PASSPHRASE")
         API_PEM_B64 = os.getenv("API_PEM_B64")
 
-        client = cb.CoinbaseAdvancedPyClient(
+        client = cb.CoinbaseAdvancedClient(
             api_key=API_KEY,
             api_secret=API_SECRET,
-            passphrase=API_PASSPHRASE,
-            pem_b64=API_PEM_B64
+            api_pem_b64=API_PEM_B64
         )
-        print("✅ Coinbase client initialized for LIVE trading.")
-
+        print("✅ Coinbase client initialized.")
     except Exception as e:
-        print("⚠️ coinbase_advanced_py import failed:", e)
-        USE_MOCK = True
-
-if USE_MOCK:
-    class MockClient:
-        def place_order(self, *args, **kwargs):
-            print("⚠️ Mock order placed:", args, kwargs)
-    client = MockClient()
-    print("⚠️ MockClient initialized (NO LIVE TRADING)")
+        print("❌ Coinbase client setup failed:", e)
+else:
+    print("⚠️ Running in MOCK mode, no live trades.")
 
 # ------------------------
-# Run Flask server
+# App entry point
 # ------------------------
 if __name__ == "__main__":
-    PORT = int(os.getenv("PORT", 10000))
-    app.run(host="0.0.0.0", port=PORT)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
