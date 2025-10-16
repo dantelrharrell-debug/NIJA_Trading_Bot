@@ -3,7 +3,7 @@ services:
     name: nija-trading-bot
     env: python
     plan: free
-    buildCommand: .venv/bin/python -m pip install --upgrade --force-reinstall -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -b 0.0.0.0:$PORT nija_bot:app
     envVars:
       - key: API_KEY
