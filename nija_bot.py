@@ -1,3 +1,14 @@
+import sys
+import importlib
+
+try:
+    import coinbase_advanced_py
+    print("✅ coinbase_advanced_py is installed at:", coinbase_advanced_py.__file__)
+except ModuleNotFoundError:
+    print("❌ Coinbase module NOT found")
+    print("Python executable:", sys.executable)
+    print("sys.path:", sys.path)
+
 #!/usr/bin/env python3
 # 🥷 Nija Bot - Fully Live Coinbase Version with Logging
 # ✅ Ready for Render and live trading
