@@ -17,10 +17,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 app = Flask(__name__)
 
 # -------------------
-# Mock / Coinbase
+# Live / Mock mode
 # -------------------
-USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
+USE_MOCK = False  # force live mode
 
+# -------------------
+# Attempt to import Coinbase client
+# -------------------
 try:
     import coinbase_advanced_py as cb_module
     logger.info("✅ Imported coinbase_advanced_py")
@@ -32,29 +35,41 @@ except ImportError as e:
 # -------------------
 # Dynamic client discovery
 # -------------------
-if cb_module and not USE_MOCK:
-    def try_instantiate(obj):
-        """Try to instantiate a class/factory with common param names. Return instance or None."""
-        if not callable(obj):
-            return None
-        param_sets = [
-            {"api_key": os.getenv("API_KEY"), "api_secret": os.getenv("API_SECRET"), "api_pem_b64": os.getenv("API_PEM_B64"), "sandbox": False},
-            {"api_key": os.getenv("API_KEY"), "api_secret": os.getenv("API_SECRET"), "pem_b64": os.getenv("API_PEM_B64"), "sandbox": False},
-            {"key": os.getenv("API_KEY"), "secret": os.getenv("API_SECRET"), "pem": os.getenv("API_PEM_B64")},
-            {},
-        ]
-        for params in param_sets:
-            try:
-                instance = obj(**params) if params else obj()
-                logger.info("Instantiation succeeded for %s with params %s", getattr(obj, "__name__", repr(obj)), params)
-                return instance
-            except TypeError as e:
-                logger.debug("TypeError for %s with params %s: %s", getattr(obj, "__name__", repr(obj)), params, e)
-            except Exception as e:
-                logger.warning("Instantiation attempt for %s with params %s raised: %s", getattr(obj, "__name__", repr(obj)), params, e)
+def try_instantiate(obj):
+    """Try to instantiate a class/factory with common param names. Return instance or None."""
+    if not callable(obj):
         return None
+    param_sets = [
+        {"api_key": os.getenv("API_KEY"),
+         "api_secret": os.getenv("API_SECRET"),
+         "api_pem_b64": os.getenv("API_PEM_B64"),
+         "sandbox": False},
+        {"api_key": os.getenv("API_KEY"),
+         "api_secret": os.getenv("API_SECRET"),
+         "pem_b64": os.getenv("API_PEM_B64"),
+         "sandbox": False},
+        {"key": os.getenv("API_KEY"),
+         "secret": os.getenv("API_SECRET"),
+         "pem": os.getenv("API_PEM_B64")},
+        {},  # try no-arg factory
+    ]
+    for params in param_sets:
+        try:
+            instance = obj(**params) if params else obj()
+            logger.info("Instantiation succeeded for %s with params %s",
+                        getattr(obj, "__name__", repr(obj)), params)
+            return instance
+        except TypeError as e:
+            logger.debug("TypeError for %s with params %s: %s",
+                         getattr(obj, "__name__", repr(obj)), params, e)
+        except Exception as e:
+            logger.warning("Instantiation attempt for %s with params %s raised: %s",
+                           getattr(obj, "__name__", repr(obj)), params, e)
+    return None
 
-    client = None
+client = None
+if cb_module and not USE_MOCK:
+    # candidate names
     search_names = [n for n in dir(cb_module) if "client" in n.lower()] + [
         "CoinbaseAdvancedClient", "CoinbaseAdvanced", "CoinbaseAdvancedClientV1", "Client", "CoinbaseClient"
     ]
@@ -97,6 +112,7 @@ if cb_module and not USE_MOCK:
         except Exception as e:
             logger.exception("Error while trying candidate %s: %s", name, e)
 
+    # last resort: any factory-like callable
     if client is None:
         for n in sorted([n for n in dir(cb_module) if not n.startswith("_")])[:400]:
             if n.lower().startswith("create") or n.lower().endswith("client") or n.lower().startswith("from_"):
@@ -111,23 +127,21 @@ if cb_module and not USE_MOCK:
                 except Exception:
                     logger.debug("Skipping %s", n)
 
-    if client is None:
-        logger.error("❌ Dynamic discovery failed — no usable client instance found. Falling back to MockClient.")
-        USE_MOCK = True
+if client is None:
+    logger.error("❌ Dynamic discovery failed — no usable client instance found.")
+    USE_MOCK = True
 else:
-    client = None
-    logger.warning("Using MockClient due to import failure or USE_MOCK=True")
+    logger.info("✅ Dynamic discovery created a client instance: %s", type(client))
 
 # -------------------
-# Flask route example
+# Flask example route
 # -------------------
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    return jsonify({"status": "ok", "received": data})
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "live", "mock": USE_MOCK})
 
 # -------------------
-# Run app (optional for local testing)
+# Start guard
 # -------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
