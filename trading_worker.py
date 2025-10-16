@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 import os
+import sys
+
+# Activate virtual environment (Render default)
+venv_path = os.path.join(os.path.dirname(__file__), ".venv", "bin", "activate_this.py")
+if os.path.exists(venv_path):
+    with open(venv_path) as f:
+        exec(f.read(), dict(__file__=venv_path))
+
+# Ensure pip-installed packages are on sys.path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".venv", "lib", "python3.11", "site-packages"))
+
+#!/usr/bin/env python3
+import os
 from dotenv import load_dotenv
 
 # -----------------------------
