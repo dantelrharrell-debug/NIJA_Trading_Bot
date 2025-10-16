@@ -1,3 +1,9 @@
+import sys, os
+print("Python executable:", sys.executable)
+print("sys.path:", sys.path)
+import coinbase_advanced_py
+print("✅ coinbase_advanced_py is imported")
+
 import os
 import time
 import threading
