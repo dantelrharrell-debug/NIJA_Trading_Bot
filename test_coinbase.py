@@ -1,39 +1,34 @@
+#!/usr/bin/env python3
 import os
-import coinbase_advanced_py as cb
+from dotenv import load_dotenv
 
-# 1️⃣ Get API keys from Render environment variables
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
+load_dotenv()
 
-if not API_KEY or not API_SECRET:
-    raise SystemExit("❌ API_KEY or API_SECRET not set in Render environment!")
+USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
 
-# 2️⃣ Connect to Coinbase
-client = cb.Client(API_KEY, API_SECRET)
+if USE_MOCK:
+    print("✅ Mock mode is ON — skipping live Coinbase test.")
+else:
+    try:
+        import coinbase_advanced_py as cb
 
-# 3️⃣ Check Spot account balances
-try:
-    spot_accounts = client.get_account_balances()
-    print("✅ Spot connection works! Spot balances:")
-    for account in spot_accounts:
-        print(f" - {account['currency']}: {account['balance']}")
-except Exception as e:
-    print("❌ Spot connection failed:", e)
+        # Load API keys from environment variables
+        API_KEY = os.getenv("API_KEY")
+        API_SECRET = os.getenv("API_SECRET")
+        API_PEM_B64 = os.getenv("API_PEM_B64")
 
-# 4️⃣ Check Futures account balances
-try:
-    futures_accounts = client.get_futures_account_balances()
-    print("\n✅ Futures connection works! Futures balances:")
-    for account in futures_accounts:
-        print(f" - {account['currency']}: {account['balance']}")
-except Exception as e:
-    print("❌ Futures connection failed:", e)
+        # Initialize client
+        client = cb.CoinbaseAdvanced(
+            key=API_KEY,
+            secret=API_SECRET,
+            pem_b64=API_PEM_B64,
+            sandbox=False  # False for live trading
+        )
 
-# 5️⃣ Optional: fetch last 5 orders to confirm trades are executing
-try:
-    recent_spot_orders = client.get_recent_orders(product_id="BTC-USD", limit=5)
-    recent_futures_orders = client.get_recent_futures_orders(product_id="BTC-USD-PERP", limit=5)
-    print("\n📈 Recent Spot Orders:", recent_spot_orders)
-    print("\n📈 Recent Futures Orders:", recent_futures_orders)
-except Exception as e:
-    print("❌ Failed to fetch recent orders:", e)
+        # Test account info
+        accounts = client.get_accounts()
+        print("✅ Coinbase connection OK. Accounts found:")
+        for acc in accounts:
+            print(f"- {acc['currency']}: {acc['available']} available")
+    except Exception as e:
+        print("❌ Coinbase connection FAILED:", e)
