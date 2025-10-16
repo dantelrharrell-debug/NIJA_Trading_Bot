@@ -1,15 +1,9 @@
-import sys
-print("Python path:", sys.path)
-
 #!/usr/bin/env python3
 import os
 import sys
 import traceback
 from flask import Flask, request, jsonify
 
-# -------------------
-# Load environment
-# -------------------
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -19,30 +13,79 @@ load_dotenv()
 USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
 
 # -------------------
-# Initialize Coinbase client
+# Robust Coinbase import + client init
 # -------------------
-if not USE_MOCK:
+import importlib
+# ensure venv site-packages is available (adjust python version if needed)
+venv_site = os.path.join(os.getcwd(), ".venv", "lib", f"python3.11", "site-packages")
+if venv_site not in sys.path:
+    sys.path.insert(0, venv_site)
+
+_possible_names = ["coinbase_advanced_py", "coinbase_advanced", "coinbase"]
+cb_module = None
+cb_import_errors = {}
+for name in _possible_names:
     try:
-        import coinbase_advanced_py as cb
-        API_KEY = os.getenv("API_KEY")
-        API_SECRET = os.getenv("API_SECRET")
-        API_PEM_B64 = os.getenv("API_PEM_B64")
-
-        client = cb.CoinbaseAdvanced(
-            api_key=API_KEY,
-            api_secret=API_SECRET,
-            pem_b64=API_PEM_B64,
-            sandbox=False  # set True if testing
-        )
-        print("✅ Coinbase client initialized in LIVE mode")
+        cb_module = importlib.import_module(name)
+        print(f"✅ Imported Coinbase module as: {name}")
+        break
     except Exception as e:
-        print("❌ Failed to initialize Coinbase client:", e)
-        USE_MOCK = True
+        cb_import_errors[name] = repr(e)
+
+if cb_module is None:
+    print("❌ Could not import coinbase module. Import attempts raised:")
+    for k, v in cb_import_errors.items():
+        print(f" - {k}: {v}")
+    print("ℹ️ Falling back to MOCK mode (USE_MOCK=True).")
+    USE_MOCK = True
 else:
-    print("ℹ️ Running in MOCK mode (no real trades)")
+    client = None
+    candidate_attrs = ["CoinbaseAdvancedClient", "CoinbaseAdvanced", "CoinbaseAdvancedClientV1", "Client"]
+    for attr in candidate_attrs:
+        if hasattr(cb_module, attr):
+            try:
+                cls = getattr(cb_module, attr)
+                try:
+                    client = cls(
+                        api_key=os.getenv("API_KEY"),
+                        api_secret=os.getenv("API_SECRET"),
+                        api_pem_b64=os.getenv("API_PEM_B64"),
+                        sandbox=False
+                    )
+                except TypeError:
+                    try:
+                        client = cls(
+                            api_key=os.getenv("API_KEY"),
+                            api_secret=os.getenv("API_SECRET"),
+                            pem_b64=os.getenv("API_PEM_B64"),
+                            sandbox=False
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Instantiation of {attr} failed: {e!r}")
+                        client = None
+                if client:
+                    print(f"✅ Successfully initialized Coinbase client using {name}.{attr}")
+                    break
+            except Exception as e:
+                print(f"⚠️ Error while trying to use {name}.{attr}: {e!r}")
+
+    if client is None:
+        for funcname in ["Client", "create_client", "from_env"]:
+            if hasattr(cb_module, funcname):
+                try:
+                    factory = getattr(cb_module, funcname)
+                    client = factory()
+                    print(f"✅ Initialized client via factory {name}.{funcname}()")
+                    break
+                except Exception as e:
+                    print(f"⚠️ Factory {name}.{funcname}() failed: {e!r}")
+    if client is None:
+        print("❌ Coinbase module imported but no usable client was instantiated. Falling back to MOCK mode.")
+        USE_MOCK = True
+
 
 # -------------------
-# Initialize Flask
+# Flask app setup
 # -------------------
 app = Flask(__name__)
 
@@ -54,26 +97,4 @@ def webhook():
     secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
     if secret != WEBHOOK_SECRET:
         return jsonify({"error": "unauthorized"}), 401
-
-    # Example payload processing
-    try:
-        event_type = data.get("type", "unknown")
-        print(f"🔔 Received webhook event: {event_type}")
-        # Add trading logic here...
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-# -------------------
-# Test route
-# -------------------
-@app.route("/", methods=["GET"])
-def index():
-    return jsonify({"status": "NIJA Bot is running", "mock": USE_MOCK})
-
-# -------------------
-# Run locally (if needed)
-# -------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    return jsonify({"status": "success", "data": data})
