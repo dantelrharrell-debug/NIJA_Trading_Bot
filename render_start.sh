@@ -1,3 +1,6 @@
+python --version
+which python
+
 #!/usr/bin/env bash
 set -e  # stop on error
 
