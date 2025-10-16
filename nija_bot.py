@@ -1,74 +1,74 @@
 #!/usr/bin/env python3
 import os
-import sys
-import traceback
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-# -------------------------------
-# Environment & Trading Settings
-# -------------------------------
-USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"  # False on Render
-FORCE_LIVE = True        # Force live trading
-FORCE_TRADING = True     # Force trades to execute
+# Load environment variables
+load_dotenv()
 
-# -------------------------------
-# Initialize Flask
-# -------------------------------
+# ------------------------
+# Flask app
+# ------------------------
 app = Flask(__name__)
 
-# -------------------------------
-# Attempt Coinbase Advanced Import
-# -------------------------------
-try:
-    import coinbase_advanced_py as cb
-    print("✅ coinbase_advanced_py imported successfully.")
-except ModuleNotFoundError as e:
-    print("⚠️ coinbase_advanced_py NOT found. Falling back to MockClient.")
-    USE_MOCK = True
+# ------------------------
+# Root route (for testing)
+# ------------------------
+@app.route("/")
+def home():
+    return "NIJA Trading Bot is running 🔥"
 
-# -------------------------------
-# Coinbase Client Setup
-# -------------------------------
-if not USE_MOCK and FORCE_LIVE and FORCE_TRADING:
-    try:
-        API_KEY = os.getenv("COINBASE_API_KEY")
-        API_SECRET = os.getenv("COINBASE_API_SECRET")
-        client = cb.Client(API_KEY, API_SECRET)
-        print("🚀 Live Coinbase client initialized ✅")
-    except Exception as e:
-        print("❌ Failed to initialize Coinbase client:", e)
-        USE_MOCK = True
+# ------------------------
+# Webhook route
+# ------------------------
+WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
 
-if USE_MOCK:
-    # Minimal MockClient for testing & fallback
-    class MockClient:
-        def place_order(self, *args, **kwargs):
-            print("💤 Mock order executed:", args, kwargs)
-
-    client = MockClient()
-    print("⚠️ MockClient initialized (NO LIVE TRADING)")
-
-# -------------------------------
-# Flask Routes
-# -------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    # Example: execute a trade
-    if not USE_MOCK and FORCE_TRADING:
-        try:
-            client.place_order(**data)
-            return jsonify({"status": "live trade executed"})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    else:
-        client.place_order(**data)
-        return jsonify({"status": "mock trade executed"})
+    secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
+    if secret != WEBHOOK_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    # TODO: Add your webhook processing logic here
+    return jsonify({"status": "received"})
 
-# -------------------------------
-# Run Flask App
-# -------------------------------
+# ------------------------
+# Coinbase client setup
+# ------------------------
+USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
+
+if not USE_MOCK:
+    try:
+        import coinbase_advanced_py as cb
+        print("✅ coinbase_advanced_py imported successfully.")
+
+        API_KEY = os.getenv("API_KEY")
+        API_SECRET = os.getenv("API_SECRET")
+        API_PASSPHRASE = os.getenv("API_PASSPHRASE")
+        API_PEM_B64 = os.getenv("API_PEM_B64")
+
+        client = cb.CoinbaseAdvancedPyClient(
+            api_key=API_KEY,
+            api_secret=API_SECRET,
+            passphrase=API_PASSPHRASE,
+            pem_b64=API_PEM_B64
+        )
+        print("✅ Coinbase client initialized for LIVE trading.")
+
+    except Exception as e:
+        print("⚠️ coinbase_advanced_py import failed:", e)
+        USE_MOCK = True
+
+if USE_MOCK:
+    class MockClient:
+        def place_order(self, *args, **kwargs):
+            print("⚠️ Mock order placed:", args, kwargs)
+    client = MockClient()
+    print("⚠️ MockClient initialized (NO LIVE TRADING)")
+
+# ------------------------
+# Run Flask server
+# ------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    print(f"🚀 Starting NIJA Bot Flask server on port {port}...")
-    app.run(host="0.0.0.0", port=port)
+    PORT = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=PORT)
