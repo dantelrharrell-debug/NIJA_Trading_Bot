@@ -1,56 +1,90 @@
 #!/usr/bin/env python3
 import os
-import sys
-import time
-import traceback
-from coinbase_advanced_py import Coinbase  # ✅ new live client import
-
+import json
 from dotenv import load_dotenv
-load_dotenv()  # load API keys from .env
+from coinbase_advanced_py import CoinbaseClient
 
-# ------------------------
-# Load API keys from env
-# ------------------------
+# -----------------------------
+# Load environment variables
+# -----------------------------
+load_dotenv()
+
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
-PASSPHRASE = os.getenv("PASSPHRASE")  # if required by your setup
+API_PEM_B64 = os.getenv("API_PEM_B64")
+PASSPHRASE = os.getenv("PASSPHRASE")  # optional, only if required
+USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
+LIVE_TRADING = os.getenv("LIVE_TRADING", "0") == "1"
+TV_WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
 
-if not API_KEY or not API_SECRET:
-    print("❌ Missing API_KEY or API_SECRET in environment.")
-    sys.exit(1)
+# -----------------------------
+# Initialize Coinbase client
+# -----------------------------
+SANDBOX = USE_MOCK or not LIVE_TRADING
 
-# ------------------------
-# Initialize live client
-# ------------------------
+client = CoinbaseClient(
+    api_key=API_KEY,
+    api_secret=API_SECRET,
+    passphrase=PASSPHRASE,
+    pem_b64=API_PEM_B64,
+    sandbox=SANDBOX
+)
+
+print(f"✅ Coinbase client initialized. Sandbox={SANDBOX}, Mock={USE_MOCK}, Live={LIVE_TRADING}")
+
+# -----------------------------
+# Optional: Print account balances for verification
+# -----------------------------
 try:
-    client = Coinbase(api_key=API_KEY, api_secret=API_SECRET)
-    print("✅ Coinbase client initialized successfully (live mode).")
+    accounts = client.get_accounts()
+    print("Your Coinbase balances:")
+    for acc in accounts:
+        print(f"{acc['currency']}: {acc['balance']}")
 except Exception as e:
-    print("❌ Failed to initialize Coinbase client:", e)
-    traceback.print_exc()
-    sys.exit(1)
+    print("⚠️ Could not fetch accounts:", e)
 
-# ------------------------
-# Main trading loop
-# ------------------------
-def main():
-    print("🚀 Trading worker running...")
-    while True:
+# -----------------------------
+# TradingView webhook handler (example)
+# -----------------------------
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
+
+    if secret != TV_WEBHOOK_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
+    # Example: simple buy/sell signal
+    signal = data.get("signal")
+    pair = data.get("pair", "BTC-USD")
+    amount = data.get("amount", 0.001)  # default small trade
+
+    print(f"🔔 Received signal: {signal} for {pair}, amount={amount}")
+
+    if USE_MOCK or not LIVE_TRADING:
+        print("🧪 Mock trade executed (no real funds).")
+    else:
         try:
-            # Example: get BTC-USD price
-            ticker = client.rest.get_ticker("BTC-USD")
-            price = ticker["price"]
-            print(f"[{time.strftime('%H:%M:%S')}] BTC-USD price: {price}")
-            
-            # TODO: add your live trading logic here
-            time.sleep(5)  # adjust frequency
-        except KeyboardInterrupt:
-            print("✋ Stopping trading worker...")
-            break
+            if signal == "buy":
+                order = client.buy(pair, amount)
+            elif signal == "sell":
+                order = client.sell(pair, amount)
+            else:
+                order = None
+                print("⚠️ Unknown signal received.")
+            print("✅ Order response:", order)
         except Exception as e:
-            print("⚠️ Error in trading loop:", e)
-            traceback.print_exc()
-            time.sleep(5)
+            print("❌ Trade failed:", e)
 
+    return jsonify({"status": "ok"})
+
+# -----------------------------
+# Run Flask server (for Render)
+# -----------------------------
 if __name__ == "__main__":
-    main()
+    port = int(os.getenv("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
