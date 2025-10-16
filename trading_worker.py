@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import os
-import json
 from dotenv import load_dotenv
-from coinbase_advanced_py import CoinbaseClient
 
 # -----------------------------
 # Load environment variables
@@ -20,6 +18,8 @@ TV_WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
 # -----------------------------
 # Initialize Coinbase client
 # -----------------------------
+from coinbase_advanced_py import CoinbaseClient
+
 SANDBOX = USE_MOCK or not LIVE_TRADING
 
 client = CoinbaseClient(
@@ -44,7 +44,7 @@ except Exception as e:
     print("⚠️ Could not fetch accounts:", e)
 
 # -----------------------------
-# TradingView webhook handler (example)
+# Flask webhook for TradingView signals
 # -----------------------------
 from flask import Flask, request, jsonify
 
@@ -58,7 +58,6 @@ def webhook():
     if secret != TV_WEBHOOK_SECRET:
         return jsonify({"error": "unauthorized"}), 401
 
-    # Example: simple buy/sell signal
     signal = data.get("signal")
     pair = data.get("pair", "BTC-USD")
     amount = data.get("amount", 0.001)  # default small trade
@@ -67,6 +66,7 @@ def webhook():
 
     if USE_MOCK or not LIVE_TRADING:
         print("🧪 Mock trade executed (no real funds).")
+        order = {"mock": True, "signal": signal, "pair": pair, "amount": amount}
     else:
         try:
             if signal == "buy":
@@ -78,12 +78,13 @@ def webhook():
                 print("⚠️ Unknown signal received.")
             print("✅ Order response:", order)
         except Exception as e:
+            order = None
             print("❌ Trade failed:", e)
 
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "order": order})
 
 # -----------------------------
-# Run Flask server (for Render)
+# Run Flask server (Render)
 # -----------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
