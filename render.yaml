@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: .venv/bin/python -m pip install --upgrade --force-reinstall -r requirements.txt
-startCommand: .venv/bin/python -m gunicorn -b 0.0.0.0:$PORT nija_bot:app
+    startCommand: gunicorn -b 0.0.0.0:$PORT nija_bot:app
     envVars:
       - key: API_KEY
         value: your_api_key_here
