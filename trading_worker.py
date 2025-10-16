@@ -1,195 +1,102 @@
 #!/usr/bin/env python3
-# trading_worker.py
-
 import os
 import sys
-import time
-import threading
 import traceback
-import pkgutil
+import time
+from datetime import datetime
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-# -------------------
-# --- Dynamic Coinbase import & inspection guard ---
-# -------------------
-print("=== Coinbase import & inspection guard ===")
-print("Python executable:", sys.executable)
-print("cwd:", os.getcwd())
-print("sys.path[:6]:", sys.path[:6])
+USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
 
-CoinbaseAdvanced = None
+# Coinbase credentials
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+API_PASSPHRASE = os.getenv("API_PASSPHRASE", "")
 
-_try_patterns = [
-    ("coinbase_advanced_py", "CoinbaseAdvanced"),
-    ("coinbase_advanced", "CoinbaseAdvanced"),
-    ("coinbase", "CoinbaseAdvanced"),
-    ("coinbase", "CoinbaseAdvancedClient"),
-    ("coinbase", "CoinbaseClient"),
-    ("coinbase", "Client"),
-    ("coinbase", "Coinbase"),
-    ("coinbase", "AdvancedClient"),
-    ("coinbase", "CoinbasePro"),
-    ("coinbase", "CoinbaseAPI"),
-]
+if not (API_KEY and API_SECRET):
+    print("❌ Missing API credentials. Exiting.")
+    sys.exit(1)
 
-for mod_name, attr in _try_patterns:
-    try:
-        mod = __import__(mod_name)
-        cand = getattr(mod, attr, None)
-        if cand:
-            CoinbaseAdvanced = cand
-            print(f"FOUND: {attr} on module '{mod_name}'")
-            break
-        try:
-            sub = __import__(f"{mod_name}.{attr}", fromlist=[attr])
-            if sub:
-                CoinbaseAdvanced = getattr(sub, attr, None)
-                if CoinbaseAdvanced:
-                    print(f"FOUND: {attr} in submodule {mod_name}.{attr}")
-                    break
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-if CoinbaseAdvanced is None:
-    print("ERROR: Could not import CoinbaseAdvanced client. Installed packages:")
-    for p in pkgutil.iter_modules():
-        name = p.name.lower()
-        if any(k in name for k in ("coin", "base", "advanced")):
-            print(" -", p.name)
-    raise ImportError("coinbase client import failed (see logs).")
-
-print("INFO: Coinbase client resolved:", CoinbaseAdvanced)
+# Import Coinbase clients
+try:
+    from coinbase.rest import CoinbaseRESTClient
+    from coinbase.websocket import CoinbaseWebsocketClient
+    print("✅ Coinbase clients imported successfully.")
+except Exception as e:
+    print("❌ Failed to import Coinbase clients:")
+    traceback.print_exc()
+    sys.exit(1)
 
 # -------------------
-# Live trading toggle
+# Initialize clients
 # -------------------
-LIVE_TRADING = os.getenv("LIVE_TRADING", "0").lower() in ("1", "true")
-if LIVE_TRADING:
-    print("⚠ LIVE_TRADING ENABLED — orders will be executed")
-else:
-    print("INFO: LIVE_TRADING disabled — simulation mode only")
-
-# -------------------
-# Initialize Coinbase client
-# -------------------
-client = CoinbaseAdvanced(
-    api_key=os.getenv("API_KEY"),
-    api_secret=os.getenv("API_SECRET"),
-    api_pem_b64=os.getenv("API_PEM_B64")
-)
-
-# -------------------
-# --- Trading logic ---
-# -------------------
-def nija_trade_signal():
-    """VWAP + RSI + EMA trend-based signal"""
-    try:
-        candles = client.get_historic_candles("BTC-USD", granularity=60, limit=50)
-        prices = [float(c[4]) for c in candles]  # closing prices
-        if len(prices) < 20:
-            print("⚠ Not enough candles for analysis")
-            return None
-
-        vwap = sum(prices) / len(prices)
-        current_price = prices[-1]
-
-        gains = [max(0, prices[i] - prices[i-1]) for i in range(1, len(prices))]
-        losses = [max(0, prices[i-1] - prices[i]) for i in range(1, len(prices))]
-        avg_gain = sum(gains[-14:])/14
-        avg_loss = sum(losses[-14:])/14
-        rsi = 100 - (100 / (1 + avg_gain/avg_loss)) if avg_loss != 0 else 100
-
-        ema = sum(prices[-20:])/20
-
-        side = None
-        if current_price > vwap and rsi < 70 and current_price > ema:
-            side = "buy"
-        elif current_price < vwap and rsi > 30 and current_price < ema:
-            side = "sell"
-        else:
-            return None
-
-        account = client.get_account("USD")
-        equity = float(account['balance'])
-        size_pct = 0.05  # 5% of equity
-        size = (equity * size_pct) / current_price
-
-        return {"side": side, "size": round(size, 6), "trail_pct": 0.005}
-
-    except Exception as e:
-        print("⚠ Trade signal error:", e)
-        traceback.print_exc()
-        return None
-
-# -------------------
-# Execute trade
-# -------------------
-def execute_trade():
-    trade = nija_trade_signal()
-    if trade:
-        if LIVE_TRADING:
-            try:
-                order = client.place_order(
-                    symbol="BTC-USD",
-                    side=trade["side"],
-                    type="market",
-                    size=trade["size"],
-                    trailing_stop_pct=trade["trail_pct"]
-                )
-                print("🚀 LIVE TRADE EXECUTED:", order)
-            except Exception as e:
-                print("⚠ Order placement failed:", e)
-        else:
-            print("⏸ Simulation: would execute trade:", trade)
+try:
+    if USE_MOCK:
+        print("⚡ Running in MOCK mode (no live trades).")
+        rest_client = None
+        ws_client = None
     else:
-        print("⏸ No trade signal currently.")
+        rest_client = CoinbaseRESTClient(API_KEY, API_SECRET)
+        ws_client = CoinbaseWebsocketClient(API_KEY, API_SECRET)
+        print("✅ Coinbase clients initialized successfully.")
+except Exception as e:
+    print("❌ Failed to initialize Coinbase clients:")
+    traceback.print_exc()
+    sys.exit(1)
 
 # -------------------
-# Trailing stop monitor
+# Safe position sizing
 # -------------------
-def trailing_stop_monitor():
+def get_trade_size(account_balance, pct_min=2, pct_max=10):
+    """Returns trade size in USD based on account equity."""
+    trade_pct = max(pct_min, min(pct_max, 5))  # default 5%, adjust as needed
+    return account_balance * trade_pct / 100
+
+# -------------------
+# Trading signals (placeholders)
+# -------------------
+def check_vwap_signal():
+    # Replace with real VWAP logic
+    return "BUY"
+
+def check_rsi_signal():
+    # Replace with real RSI logic
+    return "SELL"
+
+# -------------------
+# Main trading loop
+# -------------------
+def main():
+    print("🚀 Trading worker started at", datetime.now())
     while True:
         try:
-            open_orders = client.get_open_orders("BTC-USD")
-            ticker = client.get_ticker("BTC-USD")
-            current_price = float(ticker['price'])
+            if USE_MOCK:
+                print(f"{datetime.now()} | MOCK trade check: VWAP={check_vwap_signal()} RSI={check_rsi_signal()}")
+            else:
+                # Fetch balances
+                accounts = rest_client.get_accounts()
+                for acc in accounts:
+                    balance = float(acc['balance']['amount'])
+                    trade_size = get_trade_size(balance)
+                    print(f"{datetime.now()} | {acc['currency']} balance: {balance}, suggested trade: {trade_size}")
 
-            for order in open_orders:
-                side = order['side']
-                stop_price = float(order.get('stop_price', 0))
-                trail_pct = float(order.get('trailing_stop_pct', 0.005))
+                # Example: use signals
+                vwap_signal = check_vwap_signal()
+                rsi_signal = check_rsi_signal()
+                print(f"{datetime.now()} | Signals: VWAP={vwap_signal}, RSI={rsi_signal}")
 
-                if side == "buy":
-                    new_stop = max(stop_price, current_price * (1 - trail_pct))
-                    if new_stop > stop_price:
-                        client.modify_order(order_id=order['id'], stop_price=new_stop)
-                        print(f"⬆ BUY trailing stop updated: {new_stop:.2f}")
-                elif side == "sell":
-                    new_stop = min(stop_price, current_price * (1 + trail_pct))
-                    if new_stop < stop_price or stop_price == 0:
-                        client.modify_order(order_id=order['id'], stop_price=new_stop)
-                        print(f"⬇ SELL trailing stop updated: {new_stop:.2f}")
+            time.sleep(5)  # Poll every 5 seconds, adjust as needed
 
-        except Exception as e:
-            print("⚠ Trailing stop monitor error:", e)
-        time.sleep(5)
+        except KeyboardInterrupt:
+            print("✋ Worker stopped manually.")
+            break
+        except Exception:
+            print("⚠️ Error in trading loop:")
+            traceback.print_exc()
+            time.sleep(5)
 
-# -------------------
-# Start background monitor
-# -------------------
-monitor_thread = threading.Thread(target=trailing_stop_monitor, daemon=True)
-monitor_thread.start()
-print("🚀 Trailing stop monitor running in background.")
-
-# -------------------
-# Main loop
-# -------------------
 if __name__ == "__main__":
-    print("🚀 Trading worker started")
-    while True:
-        execute_trade()
-        time.sleep(60)
+    main()
