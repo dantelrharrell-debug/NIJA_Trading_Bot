@@ -3,11 +3,18 @@ flask==3.1.2
 gunicorn==23.0.0
 
 # Environment variables
-python-dotenv
+python-dotenv==1.1.1
 
 # Coinbase API client
 coinbase-advanced-py==1.8.2
 
-# Data processing (required by bot calculations)
-numpy>=1.26.4
+# Data processing
+numpy==2.3.4
 pandas==2.3.3
+
+# HTTP and WebSocket support
+requests==2.32.5
+websockets==13.1
+
+# Retry/backoff support
+backoff==2.2.1
