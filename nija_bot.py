@@ -1,59 +1,38 @@
-from flask import Flask, request, jsonify
-
-app = Flask(__name__)
-
 #!/usr/bin/env python3
 import os
 import importlib
 import logging
-import traceback
 import inspect
-from flask import Flask
+from flask import Flask, request, jsonify
 
 # -------------------
-# Logging setup
+# Logging
 # -------------------
 logger = logging.getLogger("nija_bot")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # -------------------
-# Determine mock mode
+# Flask app
+# -------------------
+app = Flask(__name__)
+
+# -------------------
+# Mock / Coinbase
 # -------------------
 USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
 
-# -------------------
-# Import Coinbase module
-# -------------------
 try:
     import coinbase_advanced_py as cb_module
-    logger.info("✅ Imported Coinbase module as: %s", cb_module.__name__)
+    logger.info("✅ Imported coinbase_advanced_py")
 except ImportError as e:
     logger.error("❌ Failed to import coinbase_advanced_py: %s", e)
     USE_MOCK = True
     cb_module = None
 
 # -------------------
-# Coinbase introspection + dynamic client discovery
+# Dynamic client discovery
 # -------------------
 if cb_module and not USE_MOCK:
-    logger.info("Introspecting imported coinbase module: %s", cb_module.__name__)
-
-    # --- Module introspection ---
-    try:
-        names = sorted([n for n in dir(cb_module) if not n.startswith("_")])
-        logger.info("Top-level names: %s", names[:200])
-        for n in names:
-            obj = getattr(cb_module, n)
-            if inspect.isclass(obj) or inspect.isfunction(obj) or callable(obj):
-                try:
-                    sig = inspect.signature(obj)
-                except (ValueError, TypeError):
-                    sig = "<no signature available>"
-                logger.info("  %s: %s | signature: %s", n, type(obj).__name__, sig)
-    except Exception:
-        logger.exception("Error during coinbase introspection")
-
-    # --- Helper to try instantiation ---
     def try_instantiate(obj):
         """Try to instantiate a class/factory with common param names. Return instance or None."""
         if not callable(obj):
@@ -62,7 +41,7 @@ if cb_module and not USE_MOCK:
             {"api_key": os.getenv("API_KEY"), "api_secret": os.getenv("API_SECRET"), "api_pem_b64": os.getenv("API_PEM_B64"), "sandbox": False},
             {"api_key": os.getenv("API_KEY"), "api_secret": os.getenv("API_SECRET"), "pem_b64": os.getenv("API_PEM_B64"), "sandbox": False},
             {"key": os.getenv("API_KEY"), "secret": os.getenv("API_SECRET"), "pem": os.getenv("API_PEM_B64")},
-            {},  # no-arg factory
+            {},
         ]
         for params in param_sets:
             try:
@@ -75,7 +54,6 @@ if cb_module and not USE_MOCK:
                 logger.warning("Instantiation attempt for %s with params %s raised: %s", getattr(obj, "__name__", repr(obj)), params, e)
         return None
 
-    # --- Dynamic client discovery ---
     client = None
     search_names = [n for n in dir(cb_module) if "client" in n.lower()] + [
         "CoinbaseAdvancedClient", "CoinbaseAdvanced", "CoinbaseAdvancedClientV1", "Client", "CoinbaseClient"
@@ -119,7 +97,6 @@ if cb_module and not USE_MOCK:
         except Exception as e:
             logger.exception("Error while trying candidate %s: %s", name, e)
 
-    # --- Fallback to other top-level callables ---
     if client is None:
         for n in sorted([n for n in dir(cb_module) if not n.startswith("_")])[:400]:
             if n.lower().startswith("create") or n.lower().endswith("client") or n.lower().startswith("from_"):
@@ -134,12 +111,23 @@ if cb_module and not USE_MOCK:
                 except Exception:
                     logger.debug("Skipping %s", n)
 
-    # --- Final fallback to MockClient ---
     if client is None:
         logger.error("❌ Dynamic discovery failed — no usable client instance found. Falling back to MockClient.")
         USE_MOCK = True
-    else:
-        logger.info("✅ Dynamic discovery created a client instance: %s", type(client))
 else:
     client = None
     logger.warning("Using MockClient due to import failure or USE_MOCK=True")
+
+# -------------------
+# Flask route example
+# -------------------
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    return jsonify({"status": "ok", "received": data})
+
+# -------------------
+# Run app (optional for local testing)
+# -------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
