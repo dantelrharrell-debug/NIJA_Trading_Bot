@@ -4,15 +4,17 @@ nija_bot.py
 Robust Render-ready Flask app for NIJA trading bot.
 
 - Auto-detects coinbase package in the venv.
+- Introspects the imported coinbase module (safe, no network calls).
 - Attempts multiple import names and constructors.
-- Falls back to mock mode safely if import fails.
-- Simple logging to console + file.
+- Falls back to mock mode safely if live client cannot be initialized.
+- Adds simple file + console logging for Render logs.
 """
 
 import os
 import sys
 import traceback
 import importlib
+import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, request, jsonify
@@ -61,7 +63,7 @@ except Exception:
     logger.exception("Failed to configure venv site-packages path.")
 
 # -------------------
-# Robust Coinbase import + client init
+# Robust Coinbase import + introspection + client init
 # -------------------
 client = None
 cb_module = None
@@ -82,7 +84,27 @@ if not USE_MOCK:
         logger.info("Falling back to MOCK mode for safety.")
         USE_MOCK = True
     else:
+        # -------------------
+        # Introspect imported module (safe - no network calls)
+        # -------------------
+        try:
+            logger.info("Introspecting imported coinbase module: %s", cb_module.__name__)
+            names = sorted([n for n in dir(cb_module) if not n.startswith("_")])
+            logger.info("Top-level names: %s", names[:200])
+            for n in names:
+                obj = getattr(cb_module, n)
+                if inspect.isclass(obj) or inspect.isfunction(obj) or callable(obj):
+                    try:
+                        sig = inspect.signature(obj)
+                    except (ValueError, TypeError):
+                        sig = "<no signature available>"
+                    logger.info("  %s: %s | signature: %s", n, type(obj).__name__, sig)
+        except Exception:
+            logger.exception("Error during coinbase introspection")
+
+        # -------------------
         # Try to find a usable client class or factory
+        # -------------------
         try:
             candidate_attrs = [
                 "CoinbaseAdvancedClient",
