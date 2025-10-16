@@ -1,36 +1,27 @@
 #!/usr/bin/env python3
 import os
-from dotenv import load_dotenv
+import traceback
 
-load_dotenv()
+try:
+    import coinbase_advanced_py as cb
+    print("✅ coinbase_advanced_py imported successfully.")
+except ModuleNotFoundError:
+    print("❌ Coinbase LIVE connection FAILED: No module named 'coinbase_advanced_py'")
 
-USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
+from flask import Flask, request, jsonify
 
-if USE_MOCK:
-    print("✅ Mock mode is ON — skipping live Coinbase test.")
-else:
-    try:
-        import coinbase_advanced_py as cb
+app = Flask(__name__)
 
-        # Load API keys from environment variables
-        API_KEY = os.getenv("API_KEY")
-        API_SECRET = os.getenv("API_SECRET")
-        API_PEM_B64 = os.getenv("API_PEM_B64")
+WEBHOOK_SECRET = os.getenv("TV_WEBHOOK_SECRET", "change_this_secret")
 
-        # Initialize client
-        client = cb.CoinbaseAdvanced(
-            key=API_KEY,
-            secret=API_SECRET,
-            pem_b64=API_PEM_B64,
-            sandbox=False  # False for live trading
-        )
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    secret = request.headers.get("X-WEBHOOK-SECRET") or data.get("secret")
+    if secret != WEBHOOK_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    # Your webhook logic here
+    return jsonify({"status": "success"}), 200
 
-        # Test account info
-        accounts = client.get_accounts()
-        print("✅ Coinbase LIVE connection OK. Accounts found:")
-        for acc in accounts:
-            print(f"- {acc['currency']}: {acc['available']} available")
-
-    except Exception as e:
-        print("❌ Coinbase LIVE connection FAILED:", e)
-        raise
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
