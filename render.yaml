@@ -5,3 +5,16 @@ services:
     plan: free
     buildCommand: "./render-build.sh"
     startCommand: ".venv/bin/python main.py"
+
+services:
+  - type: web
+    name: nija-trading-bot
+    env: python
+    plan: free
+    buildCommand: .venv/bin/python -m pip install -r requirements.txt
+    startCommand: .venv/bin/python -m gunicorn -b 0.0.0.0:$PORT nija_bot:app
+    envVars:
+      - key: API_KEY
+        value: your_api_key_here
+      - key: API_SECRET
+        value: your_api_secret_here
