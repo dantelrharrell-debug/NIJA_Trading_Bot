@@ -1,56 +1,68 @@
-#!/#!/usr/bin/env python3
-import os
-import sys
-import time
-import traceback
-from coinbase_advanced_py import Coinbase  # ✅ new live client import
+#!/usr/bin/env bash
+set -euo pipefail
+echo "---- START.SH: runtime diagnostics ----"
+python -V
+pip -V
 
-from dotenv import load_dotenv
-load_dotenv()  # load API keys from .env
+echo "---- Ensure requirements installed (redundant but safe) ----"
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
 
-# ------------------------
-# Load API keys from env
-# ------------------------
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-PASSPHRASE = os.getenv("PASSPHRASE")  # if required by your setup
+echo "---- PIP SHOW / LIST FOR coinbase ----"
+python - <<'PY'
+import sys, pkgutil, importlib, os, site, traceback
+import pkg_resources
 
-if not API_KEY or not API_SECRET:
-    print("❌ Missing API_KEY or API_SECRET in environment.")
-    sys.exit(1)
+print("sys.executable:", sys.executable)
+print("sys.path (filtered):")
+for p in sys.path:
+    if p and ('site-packages' in p or 'dist-packages' in p):
+        print("  ", p)
 
-# ------------------------
-# Initialize live client
-# ------------------------
-try:
-    client = Coinbase(api_key=API_KEY, api_secret=API_SECRET)
-    print("✅ Coinbase client initialized successfully (live mode).")
-except Exception as e:
-    print("❌ Failed to initialize Coinbase client:", e)
-    traceback.print_exc()
-    sys.exit(1)
+print("\nPIP packages with 'coinbase' in key:")
+for d in pkg_resources.working_set:
+    if 'coinbase' in d.key.lower():
+        print("  ->", d.key, d.version, "installed at", getattr(d, 'location', None))
 
-# ------------------------
-# Main trading loop
-# ------------------------
-def main():
-    print("🚀 Trading worker running...")
-    while True:
+# list matching files in site-packages
+sitepkgs = [p for p in sys.path if p and ('site-packages' in p or 'dist-packages' in p)]
+found = []
+for sp in sitepkgs:
+    try:
+        for name in os.listdir(sp):
+            if name.lower().startswith('coinbase'):
+                found.append((sp, name))
+    except Exception:
+        pass
+
+print("\nsite-packages coinbase* entries (first 100):")
+for sp,name in found[:100]:
+    print("  ", sp, "/", name)
+
+print("\nTry importing known variations:")
+candidates = ['coinbase_advanced_py', 'coinbase_advanced', 'coinbase_advanced_api', 'coinbase_advanced_py-1.8.2', 'coinbase']
+for cand in candidates:
+    try:
+        m = importlib.import_module(cand)
+        print(f"IMPORT OK: {cand} ->", getattr(m, '__file__', getattr(m, '__path__', 'package-no-file')))
+    except Exception as e:
+        print(f"IMPORT FAIL: {cand} -> {type(e).__name__}: {e}")
+
+# If none imported, print a sample of files inside the first site-packages
+if not found:
+    sample = []
+    for sp in sitepkgs:
         try:
-            # Example: get BTC-USD price
-            ticker = client.rest.get_ticker("BTC-USD")
-            price = ticker["price"]
-            print(f"[{time.strftime('%H:%M:%S')}] BTC-USD price: {price}")
-            
-            # TODO: add your live trading logic here
-            time.sleep(5)  # adjust frequency
-        except KeyboardInterrupt:
-            print("✋ Stopping trading worker...")
-            break
-        except Exception as e:
-            print("⚠️ Error in trading loop:", e)
-            traceback.print_exc()
-            time.sleep(5)
+            sample += os.listdir(sp)
+        except Exception:
+            pass
+    print("\nNo coinbase* found. site-packages sample (first 50):")
+    print(sample[:50])
+    # helpful hint exit code for Railway logs visibility
+    sys.exit(2)
 
-if __name__ == "__main__":
-    main()
+print("\nDiagnostics done.")
+PY
+
+echo "---- If diagnostics passed, running trading_worker_live.py ----"
+python trading_worker_live.py
