@@ -57,7 +57,7 @@ try:
     }
 
     # Replace <your-railway-url> with your project URL
-    webhook_url = f"https://<your-railway-project>.up.railway.app/webhook"
+    webhook_url = f"https://https://nija-trading-bot-production.up.railway.app/.up.railway.app/webhook"
 
     resp = requests.post(webhook_url, json=test_signal)
     print(f"🔔 Webhook test sent: Status {resp.status_code}, Response: {resp.text}")
