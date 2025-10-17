@@ -1,15 +1,3 @@
-import os
-from coinbase_advanced_py import CoinbaseClient
-
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-USE_MOCK = os.getenv("USE_MOCK", "True").lower() == "true"
-
-client = CoinbaseClient(API_KEY, API_SECRET, use_mock=USE_MOCK)
-
-print("✅ Coinbase client initialized")
-# Start your bot logic here
-
 #!/usr/bin/env python3
 import os
 import json
