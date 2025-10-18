@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 
-echo "=== START: container entrypoint ==="
-python --version || true
-pip --version || true
+echo "=== START: NIJA Trading Bot ==="
+echo "Python version: $(python --version)"
+echo "Starting NIJA Bot on port 10000..."
 
-# Ensure env sanity (optional debug)
-echo "PORT=${PORT:-10000}"
-echo "Starting NIJA bot..."
-exec python nija_bot.py
+python main.py \
+  --coinbase-api-key "f0e7ae67-cf8a-4aee-b3cd-17227a1b8267" \
+  --coinbase-api-secret "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49" \
+  --tv-webhook-secret "nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49" \
+  --port 10000
