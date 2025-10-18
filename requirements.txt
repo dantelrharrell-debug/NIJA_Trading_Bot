@@ -1,3 +1,7 @@
+# requirements.txt
+flask==3.1.2
+coinbase_advanced_py==<latest-version>
+pyngrok==<latest-version>  # if using for local tunneling
 requests==2.32.5
 urllib3==2.5.0
 charset-normalizer==3.2.0
