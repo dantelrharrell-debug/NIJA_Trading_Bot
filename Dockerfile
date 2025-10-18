@@ -1,32 +1,35 @@
 # Use official Python runtime
 FROM python:3.11-slim
 
-# Keep output unbuffered & avoid .pyc
+# Unbuffered output and no .pyc
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install OS deps needed to build some Python packages (adjust if you know what's required)
-RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential curl gcc libssl-dev libffi-dev \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install OS packages required for pip builds
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    libffi-dev \
+    libssl-dev \
+    curl \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements early to leverage cache
-COPY requirements.txt /app/
+# Copy requirements.txt first for caching
+COPY requirements.txt .
 
-# Upgrade pip & install Python deps
+# Upgrade pip & install Python packages
 RUN python -m pip install --upgrade pip setuptools wheel \
  && python -m pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . /app
+# Copy the rest of the app
+COPY . .
 
-# Make start script executable
-RUN chmod +x /app/start.sh || true
+# Make start.sh executable
+RUN chmod +x start.sh
 
-# Expose the port your Flask app uses (10000 per your logs)
 EXPOSE 10000
 
-# Use the start script as entrypoint
 CMD ["bash", "start.sh"]
