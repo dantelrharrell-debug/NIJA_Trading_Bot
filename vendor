@@ -1,0 +1,6 @@
+/your-repo
+   /vendor
+       /coinbase_advanced_py  <-- this is the vendored module
+   nija_bot.py
+   requirements.txt
+   start.sh

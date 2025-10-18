@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: nija-trading-bot
+    env: python
+    plan: free
+
+    # Build command: install requirements into Render's default Python environment
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+
+    # Start command: use gunicorn directly, no .venv paths
+    startCommand: gunicorn -b 0.0.0.0:$PORT nija_bot:app
+
+    # Environment variables: set your API keys in Render's dashboard
+    envVars:
+      - key: API_KEY
+        value: your_api_key_here
+      - key: API_SECRET
+        value: your_api_secret_here
+      - key: API_PEM_B64
+        value: |-
+          -----BEGIN PRIVATE KEY-----
+          nMHcCAQEEIHVW3T1TLBFLjoNqDOsQjtPtny50auqVT1Y27fIyefOcoAoGCCqGSM49
+          -----END PRIVATE KEY-----
+      - key: TV_WEBHOOK_SECRET
+        value: https://nija-trading-bot-9ja3.onrender.com/webhook

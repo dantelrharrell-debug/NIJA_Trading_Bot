@@ -1,0 +1,11 @@
+USE_MOCK = os.getenv("USE_MOCK", "False").lower() == "true"
+
+if not USE_MOCK:
+    try:
+        import coinbase_advanced_py as cap
+        print("✅ coinbase_advanced_py imported successfully.")
+    except ModuleNotFoundError:
+        print("❌ coinbase_advanced_py import failed! Using MockClient.")
+        USE_MOCK = True
+else:
+    print("⚠️ Mock mode enabled.")
